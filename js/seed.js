@@ -44,7 +44,7 @@ const Seed = (() => {
         description: 'Formateo con Windows/Linux, instalación de programas para la carrera, limpieza interna y cambio de pasta térmica. Diagnóstico gratis.' },
       { ownerId: 'u_andres', type: 'producto', title: 'Libro "Fundamentos de Administración"', category: 'libros', price: 30000, condition: 'usado', images: [cover('📚', B, T, 0)], views: 15, ago: 4 * DAY,
         description: 'Edición reciente, sin rayones ni hojas sueltas. Lo usamos en primer semestre de Administración.' },
-      { ownerId: 'u_demo', type: 'producto', title: 'Hoodie U Tecno edición campus', category: 'ropa', price: 45000, condition: 'nuevo', images: [cover('👕', DB, R, 1)], views: 64, ago: 5 * DAY,
+      { ownerId: 'u_demo', type: 'producto', title: 'Hoodie FORMALIN edición campus', category: 'ropa', price: 45000, condition: 'nuevo', images: [cover('👕', DB, R, 1)], views: 64, ago: 5 * DAY,
         description: 'Hoodie azul con logo bordado. Tallas S, M y L disponibles. Tela perchada, súper cómodo para las clases con aire acondicionado 😅' },
       { ownerId: 'u_camila', type: 'servicio', title: 'Clases de inglés conversacional', category: 'tutorias', price: 20000, unit: 'sesión', images: [cover('🗣️', T, B, 2)], views: 22, ago: 6 * DAY,
         description: 'Sesiones de 1 hora para mejorar tu speaking. Nivel B2 certificado. Grupos de máximo 3 personas.' },

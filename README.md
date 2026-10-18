@@ -1,4 +1,4 @@
-# U Tecno · Marketplace estudiantil
+# FORMALIN · Tu aliado para crecer formalmente
 
 Marketplace para estudiantes del **Tecnológico Comfenalco (Cartagena)**: publica productos o servicios con imágenes y deja tu WhatsApp y redes para que te contacten.
 

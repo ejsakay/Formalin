@@ -219,7 +219,7 @@
     const data = Object.fromEntries(new FormData(f));
     try {
       const u = await Auth.register({ ...data, avatar: pendingAvatar });
-      onAuthSuccess(`¡Bienvenido a U Tecno, ${u.name.split(' ')[0]}! 🎉`);
+      onAuthSuccess(`¡Bienvenido a FORMALIN, ${u.name.split(' ')[0]}! 🎉`);
       f.reset();
       pendingAvatar = '';
       $('#rAvatarPreview').innerHTML = icon('user');
@@ -282,7 +282,7 @@
     $('#latest').innerHTML = UI.skeletons(8);
     setTimeout(() => {
       const featured = popular.slice(0, 8);
-      $('#featured').innerHTML = featured.length ? featured.map((l) => UI.cardHTML(l)).join('') : UI.emptyHTML('🌱', 'Aún no hay publicaciones', 'Sé el primero en publicar algo en U Tecno.');
+      $('#featured').innerHTML = featured.length ? featured.map((l) => UI.cardHTML(l)).join('') : UI.emptyHTML('🌱', 'Aún no hay publicaciones', 'Sé el primero en publicar algo en FORMALIN.');
       const latest = active.slice(0, 8);
       $('#latest').innerHTML = latest.length
         ? latest.map((l) => UI.cardHTML(l)).join('')
@@ -452,7 +452,7 @@
     const l = Listings.byId(id);
     try {
       if (navigator.share) {
-        await navigator.share({ title: l.title, text: `Mira esto en U Tecno: ${l.title}`, url });
+        await navigator.share({ title: l.title, text: `Mira esto en FORMALIN: ${l.title}`, url });
       } else {
         await navigator.clipboard.writeText(url);
         toast('Enlace copiado al portapapeles 🔗', 'success');
@@ -631,7 +631,7 @@
         toast('Cambios guardados ✨', 'success');
       } else {
         Listings.create(d);
-        toast('¡Tu publicación ya está en U Tecno! 🚀', 'success');
+        toast('¡Tu publicación ya está en FORMALIN! 🚀', 'success');
       }
       location.hash = '#/perfil';
     } catch (err) {

@@ -3,10 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>U Tecno · Marketplace estudiantil</title>
-  <meta name="description" content="U Tecno: el marketplace de los estudiantes del Tecnológico Comfenalco. Compra, vende y ofrece servicios dentro del campus." />
-  <meta name="theme-color" content="#0A2463" />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%231E4FD8'/%3E%3Cstop offset='1' stop-color='%23EF233C'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='16' fill='url(%23g)'/%3E%3Ctext x='32' y='44' font-family='Arial' font-weight='900' font-size='34' text-anchor='middle' fill='white'%3EU%3C/text%3E%3C/svg%3E" />
+  <title>FORMALIN · Tu aliado para crecer formalmente</title>
+  <meta name="description" content="FORMALIN, tu aliado para crecer formalmente. Formalín es la plataforma digital donde conectas tu necesidad con la solución ideal, impulsando a emprendedores y negocios con conexiones seguras y eficientes." />
+  <meta name="theme-color" content="#0B2D6B" />
+  <link rel="icon" type="image/jpeg" href="img/formalin-logo.jpeg" />
+  <link rel="apple-touch-icon" href="img/formalin-logo.jpeg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700;800&display=swap" rel="stylesheet" />
@@ -51,9 +52,9 @@
   <!-- ============ Navbar ============ -->
   <header class="navbar" id="navbar">
     <div class="container nav-inner">
-      <a href="#/" class="brand" aria-label="U Tecno inicio">
-        <span class="brand-mark">U</span>
-        <span class="brand-text">U <b>Tecno</b></span>
+      <a href="#/" class="brand" aria-label="FORMALIN inicio">
+        <span class="brand-mark"><img src="img/formalin-logo.jpeg" alt=""></span>
+        <span class="brand-text"><b>FORMALIN</b><small>Tu aliado para crecer formalmente.</small></span>
       </a>
 
       <nav class="nav-links" aria-label="Principal">
@@ -84,7 +85,7 @@
           <div class="hero-copy">
             <span class="pill-badge"><svg class="ic"><use href="#i-sparkle"/></svg> Tecnológico Comfenalco · Cartagena</span>
             <h1>Compra, vende y ofrece <span class="grad-text">tu talento</span> en el campus.</h1>
-            <p class="hero-sub">U Tecno conecta a los estudiantes: productos, tutorías, diseño, comida y mucho más. Todo entre compañeros, sin intermediarios.</p>
+            <p class="hero-sub">Formalín es la plataforma digital donde conectas tu necesidad con la solución ideal, impulsando a emprendedores y negocios con conexiones seguras y eficientes.</p>
             <form class="hero-search" id="heroSearch" role="search">
               <svg class="ic"><use href="#i-search"/></svg>
               <input type="search" class="hero-in" id="heroSearchInput" placeholder="¿Qué buscas hoy? Ej: calculadora, tutoría de cálculo…" aria-label="Buscar" />
@@ -98,6 +99,17 @@
             </div>
           </div>
           <div class="hero-visual" id="heroVisual" aria-hidden="true"></div>
+        </div>
+      </div>
+
+      <div class="container section">
+        <div class="admin-card reveal">
+          <div class="admin-figure"><img src="img/formalin-admin.jpeg" alt="Personaje administrador de FORMALIN" loading="lazy" /></div>
+          <div class="admin-copy">
+            <span class="pill-badge"><svg class="ic"><use href="#i-sparkle"/></svg> Administrador de FORMALIN</span>
+            <h2>¡Hola! Yo cuido que todo funcione en FORMALIN.</h2>
+            <p>Reviso que las publicaciones sean claras y seguras para que conectes tu necesidad con la solución ideal. Si algo no se ve bien, avísame.</p>
+          </div>
         </div>
       </div>
 
@@ -181,7 +193,7 @@
           <div class="toolbar">
             <div class="search-box">
               <svg class="ic"><use href="#i-search"/></svg>
-              <input type="search" class="plain" id="fQuery" placeholder="Buscar en U Tecno…" aria-label="Buscar" />
+              <input type="search" class="plain" id="fQuery" placeholder="Buscar en FORMALIN…" aria-label="Buscar" />
             </div>
             <button class="btn btn-ghost filter-toggle" id="filterToggle"><svg class="ic"><use href="#i-filter"/></svg> Filtros</button>
             <select id="fSort" aria-label="Ordenar">
@@ -321,7 +333,7 @@
   <footer class="footer">
     <div class="container footer-inner">
       <div>
-        <a href="#/" class="brand"><span class="brand-mark">U</span><span class="brand-text">U <b>Tecno</b></span></a>
+        <a href="#/" class="brand"><span class="brand-mark"><img src="img/formalin-logo.jpeg" alt=""></span><span class="brand-text"><b>FORMALIN</b><small>Tu aliado para crecer formalmente.</small></span></a>
         <p>El marketplace de los estudiantes del Tecnológico Comfenalco · Cartagena, Colombia.</p>
       </div>
       <p class="footer-note">Los datos se guardan en este navegador (localStorage). Acuerda siempre las entregas en lugares seguros del campus.</p>
@@ -343,8 +355,8 @@
     <div class="modal-dialog auth-dialog" role="dialog" aria-modal="true" aria-labelledby="authTitle">
       <button class="icon-btn modal-close" data-close aria-label="Cerrar"><svg class="ic"><use href="#i-x"/></svg></button>
       <div class="auth-side">
-        <span class="brand-mark lg">U</span>
-        <h3>Bienvenido a U Tecno</h3>
+        <img class="auth-admin" src="img/formalin-admin.jpeg" alt="Administrador de FORMALIN" />
+        <h3>Bienvenido a FORMALIN</h3>
         <p>Únete a la comunidad de emprendedores del Tecnológico Comfenalco.</p>
         <ul>
           <li><svg class="ic"><use href="#i-check"/></svg> Publica gratis</li>

@@ -146,7 +146,7 @@ const UI = (() => {
 
   function contactHTML(user, listing) {
     if (!user) return '';
-    const msg = encodeURIComponent(`¡Hola ${user.name.split(' ')[0]}! Vi tu publicación "${listing.title}" en U Tecno y me interesa 🙌`);
+    const msg = encodeURIComponent(`¡Hola ${user.name.split(' ')[0]}! Vi tu publicación "${listing.title}" en FORMALIN y me interesa 🙌`);
     const links = [];
     if (user.phone) {
       links.push(`<a class="contact-btn wa" href="https://wa.me/${waNumber(user.phone)}?text=${msg}" target="_blank" rel="noopener">${icon('whatsapp')} Escribir por WhatsApp</a>`);
@@ -158,7 +158,7 @@ const UI = (() => {
       links.push(`<a class="contact-btn fb" href="${esc(fb)}" target="_blank" rel="noopener">${icon('facebook')} Facebook</a>`);
     }
     if (user.tiktok) links.push(`<a class="contact-btn tt" href="https://tiktok.com/@${encodeURIComponent(user.tiktok)}" target="_blank" rel="noopener">${icon('tiktok')} TikTok</a>`);
-    if (user.email) links.push(`<a class="contact-btn mail" href="mailto:${esc(user.email)}?subject=${encodeURIComponent('U Tecno: ' + listing.title)}">${icon('mail')} Correo</a>`);
+    if (user.email) links.push(`<a class="contact-btn mail" href="mailto:${esc(user.email)}?subject=${encodeURIComponent('FORMALIN: ' + listing.title)}">${icon('mail')} Correo</a>`);
     return `<div class="contact-grid">${links.join('')}</div>`;
   }
 
