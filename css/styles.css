@@ -187,7 +187,19 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .avatar.xxl { --s: 120px; border: 4px solid var(--surface); box-shadow: var(--shadow-md); }
 
 /* ---------- Hero ---------- */
-.hero { position: relative; overflow: hidden; background: var(--blue-950); color: #fff; margin-top: calc(var(--nav-h) * -1); padding: calc(var(--nav-h) + 64px) 0 96px; }
+.hero { position: relative; overflow: hidden; background: var(--blue-950); color: #fff; margin-top: calc(var(--nav-h) * -1); padding: calc(var(--nav-h) + 64px) 0 180px; }
+/* Degradado inferior: funde el azul del hero con el fondo de la página */
+.hero::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 240px; pointer-events: none;
+  /* Curva suave (no lineal) para que no se note dónde empieza ni una franja gris en medio */
+  background: linear-gradient(to bottom,
+    color-mix(in srgb, var(--bg) 0%, transparent) 0%,
+    color-mix(in srgb, var(--bg) 6%, transparent) 20%,
+    color-mix(in srgb, var(--bg) 20%, transparent) 40%,
+    color-mix(in srgb, var(--bg) 45%, transparent) 60%,
+    color-mix(in srgb, var(--bg) 75%, transparent) 80%,
+    var(--bg) 100%);
+}
 .hero-bg { position: absolute; inset: 0; pointer-events: none; }
 .blob { position: absolute; border-radius: 50%; filter: blur(80px); opacity: .7; animation: float 14s ease-in-out infinite; }
 .b1 { width: 520px; height: 520px; background: #1E56B8; top: -140px; left: -120px; }
@@ -201,7 +213,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   mask-image: radial-gradient(ellipse at 50% 30%, #000 20%, transparent 75%);
   -webkit-mask-image: radial-gradient(ellipse at 50% 30%, #000 20%, transparent 75%);
 }
-.hero-inner { position: relative; display: grid; grid-template-columns: 1.15fr .85fr; gap: 48px; align-items: center; }
+.hero-inner { position: relative; z-index: 1; display: grid; grid-template-columns: 1.15fr .85fr; gap: 48px; align-items: center; }
 .pill-badge {
   display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px; font-size: .85rem; font-weight: 500;
   background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .18); backdrop-filter: blur(8px);
@@ -620,7 +632,8 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
   .card-title { font-size: .9rem; }
   .price { font-size: 1rem; }
   .card-foot .avatar { display: none; }
-  .hero { padding-bottom: 64px; }
+  .hero { padding-bottom: 130px; }
+  .hero::after { height: 160px; }
   .hero-search { padding-left: 14px; }
   .hero-search .btn { padding: 12px 14px; }
   .stats { gap: 22px; }
