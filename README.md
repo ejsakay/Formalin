@@ -2,25 +2,36 @@
 
 Marketplace para estudiantes del **Tecnológico Comfenalco (Cartagena)**: publica productos o servicios con imágenes y deja tu WhatsApp y redes para que te contacten.
 
-## Cómo abrirlo
-- Doble clic en `index.html`, **o**
-- Servidor local: `python -m http.server 5500` y abre http://localhost:5500
+Los datos (usuarios, publicaciones, imágenes y favoritos) viven en **Supabase**. Solo se pueden registrar correos `@comfenalco.edu.co` o `@tecnologicocomfenalco.edu.co`.
 
-Cuenta demo: `demo@tecnologicocomfenalco.edu.co` / `demo123`
+## Configurar Supabase (una sola vez)
+1. Crea un proyecto en [supabase.com](https://supabase.com).
+2. En **SQL Editor → New query**, pega el contenido de `schema.sql` y ejecútalo (crea tablas, RLS, triggers y los buckets `listing-images` y `avatars`).
+3. En **Authentication → URL Configuration**:
+   - Site URL: `https://ejsakay.github.io/Formalin/`
+   - Redirect URLs: añade `http://localhost:5173/Formalin/`
+4. Copia `.env.example` como `.env` y completa los valores de **Project Settings → API** (`Project URL` y `anon public key`).
+
+## Desarrollo local
+```bash
+npm install
+npm run dev      # http://localhost:5173/Formalin/
+npm run build    # genera dist/
+```
+
+## Despliegue
+Cada push a `main` ejecuta `.github/workflows/deploy.yml`, que compila con Vite y publica en GitHub Pages.
+El repositorio necesita los secrets `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` (Settings → Secrets and variables → Actions) y Pages configurado con la fuente **GitHub Actions**.
 
 ## Estructura
 ```
 index.html        Vistas (Inicio, Explorar, Publicar, Perfil) y modales
-css/styles.css    Diseño (colores en :root → azul, blanco y rojo)
-js/storage.js     Acceso a localStorage
-js/auth.js        Registro / login / perfil
-js/listings.js    Publicaciones, búsqueda, favoritos, compresión de imágenes
+schema.sql        Tablas, políticas RLS, triggers y buckets de Supabase
+css/styles.css    Diseño (colores del logo en :root → verde y azul)
+js/supabase.js    Cliente de Supabase y utilidades (URLs públicas, errores)
+js/auth.js        Registro / login / perfil con Supabase Auth
+js/listings.js    Publicaciones, búsqueda, favoritos e imágenes en Storage
 js/ui.js          Tarjetas, modales, toasts, detalle y contacto
-js/seed.js        Datos de ejemplo (se cargan una sola vez)
+js/storage.js     Preferencias locales (tema claro/oscuro)
 js/app.js         Rutas (#/explorar, #/publicar, #/perfil…) y lógica de vistas
 ```
-
-## Importante
-Los datos se guardan en **localStorage**: solo existen en el navegador donde se crean (límite aprox. 5 MB; las imágenes se comprimen automáticamente).
-Para que todos los estudiantes vean las mismas publicaciones hace falta un backend (p. ej. Firebase).
-Para reiniciar los datos de ejemplo: en la consola del navegador ejecuta `localStorage.clear()` y recarga.

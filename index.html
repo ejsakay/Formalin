@@ -336,7 +336,7 @@
         <a href="#/" class="brand"><span class="brand-mark"><img src="img/formalin-logo.jpeg" alt=""></span><span class="brand-text"><b>FORMALIN</b><small>Tu aliado para crecer formalmente.</small></span></a>
         <p>El marketplace de los estudiantes del Tecnológico Comfenalco · Cartagena, Colombia.</p>
       </div>
-      <p class="footer-note">Los datos se guardan en este navegador (localStorage). Acuerda siempre las entregas en lugares seguros del campus.</p>
+      <p class="footer-note">Solo para estudiantes con correo institucional de Comfenalco. Acuerda siempre las entregas en lugares seguros del campus.</p>
     </div>
   </footer>
 
@@ -374,7 +374,7 @@
         <form id="loginForm" class="auth-form" novalidate>
           <div class="field">
             <label for="lEmail">Correo</label>
-            <input id="lEmail" name="email" type="email" autocomplete="email" placeholder="tu.correo@tecnologicocomfenalco.edu.co" required />
+            <input id="lEmail" name="email" type="email" autocomplete="email" placeholder="tu.correo@comfenalco.edu.co" pattern=".+@(tecnologico)?comfenalco\.edu\.co" title="Usa tu correo @comfenalco.edu.co o @tecnologicocomfenalco.edu.co" required />
           </div>
           <div class="field">
             <label for="lPass">Contraseña</label>
@@ -400,7 +400,7 @@
           </div>
           <div class="field">
             <label for="rEmail">Correo</label>
-            <input id="rEmail" name="email" type="email" autocomplete="email" placeholder="tu.correo@tecnologicocomfenalco.edu.co" required />
+            <input id="rEmail" name="email" type="email" autocomplete="email" placeholder="tu.correo@comfenalco.edu.co" pattern=".+@(tecnologico)?comfenalco\.edu\.co" title="Usa tu correo @comfenalco.edu.co o @tecnologicocomfenalco.edu.co" required />
           </div>
           <div class="field">
             <label for="rPass">Contraseña</label>
@@ -468,11 +468,6 @@
 
   <div class="toasts" id="toasts" aria-live="polite"></div>
 
-  <script src="js/storage.js"></script>
-  <script src="js/auth.js"></script>
-  <script src="js/listings.js"></script>
-  <script src="js/ui.js"></script>
-  <script src="js/seed.js"></script>
-  <script src="js/app.js"></script>
+  <script type="module" src="/js/app.js"></script>
 </body>
 </html>

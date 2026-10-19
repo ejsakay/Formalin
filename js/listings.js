@@ -1,5 +1,8 @@
-/* Publicaciones: CRUD, búsqueda, favoritos e imágenes */
-const Listings = (() => {
+/* Publicaciones: CRUD, búsqueda, favoritos e imágenes sobre Supabase */
+import { supabase, BUCKETS, publicUrl, dataUrlToBlob, friendlyError } from './supabase.js';
+import { Auth } from './auth.js';
+
+export const Listings = (() => {
   const CATEGORIES = [
     { id: 'tecnologia', label: 'Tecnología', emoji: '💻' },
     { id: 'libros', label: 'Libros y útiles', emoji: '📚' },
@@ -12,105 +15,210 @@ const Listings = (() => {
   ];
   const catById = (id) => CATEGORIES.find((c) => c.id === id) || CATEGORIES[CATEGORIES.length - 1];
 
-  const all = () => Store.listings();
-  const byId = (id) => all().find((l) => l.id === id) || null;
-  const byOwner = (ownerId) => all().filter((l) => l.ownerId === ownerId).sort((a, b) => b.createdAt - a.createdAt);
+  const SELECT = '*, owner:profiles!listings_owner_id_fkey(*), listing_images(path, position)';
+  const cache = new Map(); // publicaciones ya cargadas, por id
+  const favSet = new Set(); // ids favoritos del usuario con sesión
 
-  function create(data) {
-    const me = Auth.current();
-    if (!me) throw new Error('Debes iniciar sesión.');
-    const listing = {
-      id: Store.uid(),
-      ownerId: me.id,
-      type: data.type,
-      title: data.title.trim(),
-      description: data.description.trim(),
-      price: Math.max(0, Number(data.price) || 0),
-      unit: data.type === 'servicio' ? data.unit || '' : '',
-      condition: data.type === 'producto' ? data.condition || '' : '',
-      category: data.category,
-      images: data.images || [],
-      status: 'activo',
-      views: 0,
-      createdAt: Date.now(),
+  // Fila de Supabase → objeto que usa la interfaz
+  function mapRow(row) {
+    if (row.owner) Auth.cacheProfile(row.owner);
+    const imgs = [...(row.listing_images || [])].sort((a, b) => a.position - b.position);
+    const l = {
+      id: row.id,
+      ownerId: row.owner_id,
+      type: row.type,
+      title: row.title,
+      description: row.description,
+      price: Number(row.price) || 0,
+      unit: row.unit || '',
+      condition: row.condition || '',
+      category: row.category_id,
+      status: row.status,
+      views: row.views || 0,
+      createdAt: Date.parse(row.created_at),
+      images: imgs.map((i) => publicUrl(BUCKETS.listings, i.path)),
+      imagePaths: imgs.map((i) => i.path),
     };
-    const list = all();
-    list.unshift(listing);
-    Store.saveListings(list);
-    return listing;
+    cache.set(l.id, l);
+    return l;
   }
 
-  function update(id, patch) {
-    const list = all();
-    const i = list.findIndex((l) => l.id === id);
-    if (i < 0) throw new Error('Publicación no encontrada.');
-    const me = Auth.current();
-    if (!me || list[i].ownerId !== me.id) throw new Error('No tienes permiso para editar esto.');
-    list[i] = { ...list[i], ...patch, id, ownerId: list[i].ownerId };
-    Store.saveListings(list);
-    return list[i];
+  function check(error, fallback) {
+    if (error) throw new Error(friendlyError(error, fallback));
   }
 
-  function remove(id) {
-    const me = Auth.current();
-    const l = byId(id);
-    if (!me || !l || l.ownerId !== me.id) throw new Error('No tienes permiso para eliminar esto.');
-    Store.saveListings(all().filter((x) => x.id !== id));
+  const byId = (id) => cache.get(id) || null;
+
+  async function fetchById(id) {
+    const { data, error } = await supabase.from('listings').select(SELECT).eq('id', id).maybeSingle();
+    check(error);
+    return data ? mapRow(data) : null;
   }
 
-  function addView(id) {
-    const list = all();
-    const l = list.find((x) => x.id === id);
-    if (!l) return;
-    l.views = (l.views || 0) + 1;
-    try { Store.saveListings(list); } catch (e) { /* ignorar */ }
+  async function byOwner(ownerId) {
+    const { data, error } = await supabase.from('listings').select(SELECT).eq('owner_id', ownerId).order('created_at', { ascending: false });
+    check(error);
+    return data.map(mapRow);
   }
 
-  function query({ q = '', type = '', categories = [], min = '', max = '', hideSold = true, sort = 'recent' } = {}) {
-    const terms = normalize(q).split(/\s+/).filter(Boolean);
-    let res = all().filter((l) => {
-      if (hideSold && l.status === 'vendido') return false;
-      if (type && l.type !== type) return false;
-      if (categories.length && !categories.includes(l.category)) return false;
-      if (min !== '' && l.price < Number(min)) return false;
-      if (max !== '' && l.price > Number(max)) return false;
-      if (terms.length) {
-        const owner = Auth.getUser(l.ownerId);
-        const hay = normalize([l.title, l.description, catById(l.category).label, owner && owner.name, owner && owner.career].join(' '));
-        return terms.every((t) => hay.includes(t));
-      }
-      return true;
-    });
-    const sorters = {
-      recent: (a, b) => b.createdAt - a.createdAt,
-      'price-asc': (a, b) => a.price - b.price,
-      'price-desc': (a, b) => b.price - a.price,
-      popular: (a, b) => (b.views || 0) - (a.views || 0),
+  // Escapa los comodines de ILIKE y los separadores de filtros de PostgREST
+  const likeTerm = (t) => `%${t.replace(/[\\%_]/g, (c) => '\\' + c).replace(/[,()]/g, ' ')}%`;
+
+  async function query({ q = '', type = '', categories = [], min = '', max = '', hideSold = true, sort = 'recent', limit = 200 } = {}) {
+    let req = supabase.from('listings').select(SELECT);
+    if (hideSold) req = req.eq('status', 'activo');
+    if (type) req = req.eq('type', type);
+    if (categories.length) req = req.in('category_id', categories);
+    if (min !== '' && min !== null) req = req.gte('price', Number(min));
+    if (max !== '' && max !== null) req = req.lte('price', Number(max));
+    // La columna "search" ya está en minúsculas y sin tildes
+    normalize(q).split(/\s+/).filter(Boolean).forEach((t) => { req = req.ilike('search', likeTerm(t)); });
+
+    const orders = {
+      recent: ['created_at', false],
+      'price-asc': ['price', true],
+      'price-desc': ['price', false],
+      popular: ['views', false],
     };
-    return res.sort(sorters[sort] || sorters.recent);
+    const [col, ascending] = orders[sort] || orders.recent;
+    req = req.order(col, { ascending });
+    if (col !== 'created_at') req = req.order('created_at', { ascending: false });
+
+    const { data, error } = await req.limit(limit);
+    check(error, 'No se pudieron cargar las publicaciones.');
+    return data.map(mapRow);
   }
 
   function normalize(s) {
     return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   }
 
-  /* ---- Favoritos ---- */
-  function favIds() {
+  /* ---- Imágenes en Storage ---- */
+  // Sube las imágenes nuevas (data URL) y conserva las que ya estaban en el bucket
+  async function syncImages(listingId, images, oldPaths = []) {
     const me = Auth.current();
-    return me ? Store.favs()[me.id] || [] : [];
+    const oldByUrl = new Map(oldPaths.map((p) => [publicUrl(BUCKETS.listings, p), p]));
+    const paths = [];
+    const uploaded = [];
+    try {
+      for (const src of images) {
+        if (oldByUrl.has(src)) { paths.push(oldByUrl.get(src)); continue; }
+        const path = `${me.id}/${listingId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+        const { error } = await supabase.storage.from(BUCKETS.listings).upload(path, await dataUrlToBlob(src), { contentType: 'image/jpeg' });
+        check(error, 'No se pudo subir una imagen.');
+        uploaded.push(path);
+        paths.push(path);
+      }
+      const { error: delErr } = await supabase.from('listing_images').delete().eq('listing_id', listingId);
+      check(delErr);
+      if (paths.length) {
+        const { error: insErr } = await supabase.from('listing_images').insert(paths.map((path, position) => ({ listing_id: listingId, path, position })));
+        check(insErr);
+      }
+    } catch (err) {
+      if (uploaded.length) await supabase.storage.from(BUCKETS.listings).remove(uploaded);
+      throw err;
+    }
+    const removed = oldPaths.filter((p) => !paths.includes(p));
+    if (removed.length) await supabase.storage.from(BUCKETS.listings).remove(removed);
   }
-  const isFav = (id) => favIds().includes(id);
-  function toggleFav(id) {
+
+  function toRow(data) {
+    return {
+      type: data.type,
+      title: data.title.trim(),
+      description: data.description.trim(),
+      price: Math.max(0, Number(data.price) || 0),
+      unit: data.type === 'servicio' ? data.unit || '' : '',
+      condition: data.type === 'producto' ? data.condition || '' : '',
+      category_id: data.category,
+    };
+  }
+
+  /* ---- CRUD ---- */
+  async function create(data) {
+    const me = Auth.current();
+    if (!me) throw new Error('Debes iniciar sesión.');
+    const { data: row, error } = await supabase.from('listings').insert({ ...toRow(data), owner_id: me.id }).select('id').single();
+    check(error, 'No se pudo crear la publicación.');
+    try {
+      await syncImages(row.id, data.images || []);
+    } catch (err) {
+      // No dejar una publicación a medias si fallan las imágenes
+      await supabase.from('listings').delete().eq('id', row.id);
+      throw err;
+    }
+    return fetchById(row.id);
+  }
+
+  async function update(id, patch) {
+    const me = Auth.current();
+    const current = byId(id) || (await fetchById(id));
+    if (!current) throw new Error('Publicación no encontrada.');
+    if (!me || current.ownerId !== me.id) throw new Error('No tienes permiso para editar esto.');
+
+    const row = {};
+    if (patch.title !== undefined) Object.assign(row, toRow({ ...current, ...patch }));
+    if (patch.status !== undefined) row.status = patch.status;
+    if (Object.keys(row).length) {
+      const { error } = await supabase.from('listings').update(row).eq('id', id);
+      check(error, 'No se pudieron guardar los cambios.');
+    }
+    if (patch.images) await syncImages(id, patch.images, current.imagePaths);
+    return fetchById(id);
+  }
+
+  async function remove(id) {
+    const me = Auth.current();
+    const l = byId(id) || (await fetchById(id));
+    if (!me || !l || l.ownerId !== me.id) throw new Error('No tienes permiso para eliminar esto.');
+    const { error } = await supabase.from('listings').delete().eq('id', id);
+    check(error, 'No se pudo eliminar la publicación.');
+    if (l.imagePaths.length) await supabase.storage.from(BUCKETS.listings).remove(l.imagePaths);
+    cache.delete(id);
+    favSet.delete(id);
+  }
+
+  function addView(id) {
+    const l = byId(id);
+    if (l) l.views += 1;
+    supabase.rpc('increment_views', { listing_id: id }).then(({ error }) => error && console.warn('increment_views', error));
+  }
+
+  /* ---- Favoritos ---- */
+  async function loadFavs() {
+    favSet.clear();
+    const me = Auth.current();
+    if (!me) return;
+    const { data, error } = await supabase.from('favorites').select('listing_id');
+    if (error) return console.warn('No se pudieron cargar los favoritos', error);
+    data.forEach((f) => favSet.add(f.listing_id));
+  }
+
+  const isFav = (id) => favSet.has(id);
+  const favCount = () => favSet.size;
+
+  async function toggleFav(id) {
     const me = Auth.current();
     if (!me) throw new Error('AUTH');
-    const favs = Store.favs();
-    const mine = new Set(favs[me.id] || []);
-    mine.has(id) ? mine.delete(id) : mine.add(id);
-    favs[me.id] = [...mine];
-    Store.saveFavs(favs);
-    return mine.has(id);
+    const on = !favSet.has(id);
+    on ? favSet.add(id) : favSet.delete(id); // respuesta inmediata en la interfaz
+    const { error } = on
+      ? await supabase.from('favorites').insert({ user_id: me.id, listing_id: id })
+      : await supabase.from('favorites').delete().eq('user_id', me.id).eq('listing_id', id);
+    if (error) {
+      on ? favSet.delete(id) : favSet.add(id);
+      throw new Error(friendlyError(error, 'No se pudo actualizar tus favoritos.'));
+    }
+    return on;
   }
-  const favorites = () => favIds().map(byId).filter(Boolean);
+
+  async function favorites() {
+    if (!favSet.size) return [];
+    const { data, error } = await supabase.from('listings').select(SELECT).in('id', [...favSet]).order('created_at', { ascending: false });
+    check(error);
+    return data.map(mapRow);
+  }
 
   /* ---- Imágenes: redimensiona y comprime con canvas ---- */
   function compressImage(file, maxSize = 1000, quality = 0.75) {
@@ -138,5 +246,5 @@ const Listings = (() => {
     });
   }
 
-  return { CATEGORIES, catById, all, byId, byOwner, create, update, remove, addView, query, isFav, toggleFav, favorites, compressImage };
+  return { CATEGORIES, catById, byId, fetchById, byOwner, create, update, remove, addView, query, loadFavs, isFav, favCount, toggleFav, favorites, compressImage };
 })();

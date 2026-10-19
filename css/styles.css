@@ -386,6 +386,7 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
 .hint { color: var(--muted); font-size: .8rem; }
 .field .hint { align-self: flex-end; }
 .form-error { color: var(--red-500); font-size: .88rem; font-weight: 500; min-height: 1.2em; margin: 0 0 8px; }
+.form-error.ok { color: var(--green-600); }
 .icon-field { flex-direction: row; align-items: center; gap: 10px; }
 .icon-field .ic { color: var(--muted); }
 

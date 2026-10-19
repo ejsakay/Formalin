@@ -1,5 +1,8 @@
 /* Utilidades de interfaz: render, modales, toasts, animaciones */
-const UI = (() => {
+import { Auth } from './auth.js';
+import { Listings } from './listings.js';
+
+export const UI = (() => {
   const $ = (sel, ctx = document) => ctx.querySelector(sel);
   const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
 
@@ -38,7 +41,7 @@ const UI = (() => {
 
   const placeholderImg =
     'data:image/svg+xml,' +
-    encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"><rect width="400" height="300" fill="#E7EEFF"/><text x="200" y="170" font-size="64" text-anchor="middle">📦</text></svg>`);
+    encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"><rect width="400" height="300" fill="#E6EEFB"/><text x="200" y="170" font-size="64" text-anchor="middle">📦</text></svg>`);
 
   /* ---- Tarjeta de publicación ---- */
   function cardHTML(l, { owner = false } = {}) {
@@ -163,8 +166,13 @@ const UI = (() => {
   }
 
   /* ---- Modal de detalle ---- */
-  function openDetail(id) {
-    const l = Listings.byId(id);
+  async function openDetail(id) {
+    let l;
+    try {
+      l = await Listings.fetchById(id);
+    } catch (err) {
+      return toast(err.message, 'error');
+    }
     if (!l) return toast('Esta publicación ya no existe.', 'error');
     Listings.addView(id);
     const user = Auth.getUser(l.ownerId);
@@ -194,7 +202,7 @@ const UI = (() => {
           </div>
           <h2>${esc(l.title)}</h2>
           ${priceHTML(l)}
-          <div class="meta-line"><span>${icon('eye')} ${(l.views || 0) + 1} vistas</span><span>🕒 ${timeAgo(l.createdAt)}</span></div>
+          <div class="meta-line"><span>${icon('eye')} ${l.views || 0} vistas</span><span>🕒 ${timeAgo(l.createdAt)}</span></div>
           <p class="detail-desc">${esc(l.description)}</p>
           <div class="seller-card">
             ${avatarHTML(user, 'lg')}

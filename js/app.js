@@ -1,4 +1,10 @@
 /* Arranque, enrutador y lógica de vistas */
+import { Store } from './storage.js';
+import { Auth } from './auth.js';
+import { Listings } from './listings.js';
+import { UI } from './ui.js';
+import { isConfigured } from './supabase.js';
+
 (() => {
   const { $, $$, esc, icon, toast, openModal, closeModal } = UI;
 
@@ -119,11 +125,12 @@
     if (authBtn) openAuth(authBtn.dataset.auth);
 
     if (e.target.closest('#logoutBtn')) {
-      Auth.logout();
-      renderNav();
-      toast('Sesión cerrada. ¡Vuelve pronto!', 'info');
-      location.hash = '#/';
-      router();
+      Auth.logout().finally(async () => {
+        await syncSession();
+        toast('Sesión cerrada. ¡Vuelve pronto!', 'info');
+        location.hash = '#/';
+        router();
+      });
     }
   });
 
@@ -142,6 +149,7 @@
     $('#loginForm').hidden = tab !== 'login';
     $('#registerForm').hidden = tab !== 'register';
     $('#loginError').textContent = $('#registerError').textContent = '';
+    $('#loginError').classList.remove('ok');
   }
 
   $('#authTabs').addEventListener('click', (e) => {
@@ -194,12 +202,22 @@
     e.preventDefault();
     const f = e.target;
     if (!validate(f)) return;
+    $('#loginError').classList.remove('ok');
+    if (!Auth.isInstitutionalEmail(f.email.value)) {
+      f.email.classList.add('invalid');
+      $('#loginError').textContent = 'Usa tu correo institucional (@comfenalco.edu.co o @tecnologicocomfenalco.edu.co).';
+      return;
+    }
+    const btn = f.querySelector('[type="submit"]');
+    btn.disabled = true;
     try {
       const u = await Auth.login(f.email.value, f.password.value);
-      onAuthSuccess(`¡Hola de nuevo, ${u.name.split(' ')[0]}! 👋`);
+      await onAuthSuccess(`¡Hola de nuevo, ${u.name.split(' ')[0]}! 👋`);
       f.reset();
     } catch (err) {
       $('#loginError').textContent = err.message;
+    } finally {
+      btn.disabled = false;
     }
   });
 
@@ -207,6 +225,11 @@
     e.preventDefault();
     const f = e.target;
     if (!validate(f)) return;
+    if (!Auth.isInstitutionalEmail(f.email.value)) {
+      f.email.classList.add('invalid');
+      $('#registerError').textContent = 'Usa tu correo institucional (@comfenalco.edu.co o @tecnologicocomfenalco.edu.co).';
+      return;
+    }
     if (f.password.value.length < 6) {
       $('#registerError').textContent = 'La contraseña debe tener al menos 6 caracteres.';
       return;
@@ -217,21 +240,50 @@
       return;
     }
     const data = Object.fromEntries(new FormData(f));
+    const btn = f.querySelector('[type="submit"]');
+    btn.disabled = true;
     try {
-      const u = await Auth.register({ ...data, avatar: pendingAvatar });
-      onAuthSuccess(`¡Bienvenido a FORMALIN, ${u.name.split(' ')[0]}! 🎉`);
+      const { user: u, needsConfirmation } = await Auth.register({ ...data, avatar: pendingAvatar });
       f.reset();
       pendingAvatar = '';
       $('#rAvatarPreview').innerHTML = icon('user');
       $('#strengthBar').style.width = '0';
+      if (needsConfirmation) {
+        // Supabase envía un enlace de confirmación; la sesión empieza al abrirlo
+        switchAuthTab('login');
+        $('#lEmail').value = u.email;
+        $('#loginError').classList.add('ok');
+        $('#loginError').textContent = `¡Listo, ${u.name.split(' ')[0]}! Te enviamos un correo a ${u.email}. Ábrelo y confirma tu cuenta para iniciar sesión.`;
+        return;
+      }
+      await onAuthSuccess(`¡Bienvenido a FORMALIN, ${u.name.split(' ')[0]}! 🎉`);
     } catch (err) {
-      $('#registerError').textContent = err.code === 'QUOTA' ? 'No hay espacio suficiente. Prueba con una foto más pequeña.' : err.message;
+      $('#registerError').textContent = err.message;
+    } finally {
+      btn.disabled = false;
     }
   });
 
-  function onAuthSuccess(msg) {
-    closeModal('authModal');
+  // Recarga favoritos y navbar según el usuario con sesión
+  let sessionUserId = null;
+  async function syncSession() {
+    sessionUserId = Auth.current()?.id || null;
+    await Listings.loadFavs();
     renderNav();
+  }
+
+  // Cambios de sesión que no vienen del modal (confirmación de correo, otra pestaña, expiración)
+  async function onAuthChange() {
+    if ((Auth.current()?.id || null) === sessionUserId) return;
+    await syncSession();
+    const { route } = parseHash();
+    if (!Auth.current() && ['publicar', 'editar', 'perfil'].includes(route)) location.hash = '#/';
+    else router();
+  }
+
+  async function onAuthSuccess(msg) {
+    await syncSession();
+    closeModal('authModal');
     toast(msg, 'success');
     if (afterLogin) {
       const target = afterLogin;
@@ -247,22 +299,29 @@
      ========================================================= */
   const QUICK_TAGS = ['Tutorías', 'Calculadora', 'Postres', 'Diseño', 'Portátil', 'Inglés'];
 
-  function renderHome() {
-    const active = Listings.query({ hideSold: true });
-    const all = Listings.all();
+  async function renderHome() {
+    $('#heroTags').innerHTML = QUICK_TAGS.map((t) => `<button type="button" data-q="${esc(t)}">${esc(t)}</button>`).join('');
+    $('#featured').innerHTML = UI.skeletons(4);
+    $('#latest').innerHTML = UI.skeletons(8);
+
+    let active, popular;
+    try {
+      [active, popular] = await Promise.all([Listings.query({ hideSold: true }), Listings.query({ sort: 'popular', limit: 8 })]);
+    } catch (err) {
+      $('#featured').innerHTML = '';
+      $('#latest').innerHTML = UI.emptyHTML('⚠️', 'No se pudieron cargar las publicaciones', esc(err.message));
+      return;
+    }
 
     // Estadísticas animadas
     const counts = {
       listings: active.length,
-      sellers: new Set(all.map((l) => l.ownerId)).size,
+      sellers: new Set(active.map((l) => l.ownerId)).size,
       services: active.filter((l) => l.type === 'servicio').length,
     };
     $$('[data-count]').forEach((el) => UI.countUp(el, counts[el.dataset.count]));
 
-    $('#heroTags').innerHTML = QUICK_TAGS.map((t) => `<button type="button" data-q="${esc(t)}">${esc(t)}</button>`).join('');
-
     // Tarjetas flotantes del hero
-    const popular = Listings.query({ sort: 'popular' });
     $('#heroVisual').innerHTML = popular.slice(0, 3).map((l) => `
       <div class="float-card" data-id="${l.id}">
         <img src="${esc(l.images[0] || '')}" alt="">
@@ -277,17 +336,13 @@
       </button>`;
     }).join('');
 
-    // Carrusel y recientes con skeleton breve
-    $('#featured').innerHTML = UI.skeletons(4);
-    $('#latest').innerHTML = UI.skeletons(8);
-    setTimeout(() => {
-      const featured = popular.slice(0, 8);
-      $('#featured').innerHTML = featured.length ? featured.map((l) => UI.cardHTML(l)).join('') : UI.emptyHTML('🌱', 'Aún no hay publicaciones', 'Sé el primero en publicar algo en FORMALIN.');
-      const latest = active.slice(0, 8);
-      $('#latest').innerHTML = latest.length
-        ? latest.map((l) => UI.cardHTML(l)).join('')
-        : UI.emptyHTML('🛍️', 'El marketplace está vacío', 'Publica tu primer producto o servicio y empieza a vender.', `<a href="#/publicar" class="btn btn-primary">${icon('plus')} Publicar</a>`);
-    }, 350);
+    // Carrusel y recientes
+    $('#featured').innerHTML = popular.length ? popular.map((l) => UI.cardHTML(l)).join('') : UI.emptyHTML('🌱', 'Aún no hay publicaciones', 'Sé el primero en publicar algo en FORMALIN.');
+    const latest = active.slice(0, 8);
+    $('#latest').innerHTML = latest.length
+      ? latest.map((l) => UI.cardHTML(l)).join('')
+      : UI.emptyHTML('🛍️', 'El marketplace está vacío', 'Publica tu primer producto o servicio y empieza a vender.', `<a href="#/publicar" class="btn btn-primary">${icon('plus')} Publicar</a>`);
+    UI.reveal();
   }
 
   $('#heroSearch').addEventListener('submit', (e) => {
@@ -334,8 +389,20 @@
       `<button class="chip ${filters.categories.includes(c.id) ? 'active' : ''}" data-c="${c.id}">${c.emoji} ${esc(c.label)}</button>`).join('');
   }
 
-  function renderExplore() {
-    const res = Listings.query(filters);
+  let exploreReq = 0; // evita que una respuesta lenta pise a una más reciente
+  async function renderExplore() {
+    const req = ++exploreReq;
+    $('#exploreGrid').innerHTML = UI.skeletons(8);
+    let res;
+    try {
+      res = await Listings.query(filters);
+    } catch (err) {
+      if (req !== exploreReq) return;
+      $('#resultCount').textContent = '';
+      $('#exploreGrid').innerHTML = UI.emptyHTML('⚠️', 'No se pudieron cargar las publicaciones', esc(err.message));
+      return;
+    }
+    if (req !== exploreReq) return;
     $('#resultCount').textContent = `${res.length} ${res.length === 1 ? 'resultado' : 'resultados'}${filters.q ? ` para “${filters.q}”` : ''}`;
     $('#exploreGrid').innerHTML = res.length
       ? res.map((l) => UI.cardHTML(l)).join('')
@@ -402,8 +469,12 @@
     const sold = e.target.closest('[data-sold]');
     if (sold) {
       const l = Listings.byId(sold.dataset.sold);
-      Listings.update(l.id, { status: l.status === 'vendido' ? 'activo' : 'vendido' });
-      toast(l.status === 'vendido' ? 'Publicación reactivada.' : 'Marcada como no disponible.', 'success');
+      try {
+        await Listings.update(l.id, { status: l.status === 'vendido' ? 'activo' : 'vendido' });
+        toast(l.status === 'vendido' ? 'Publicación reactivada.' : 'Marcada como no disponible.', 'success');
+      } catch (err) {
+        toast(err.message, 'error');
+      }
       return renderProfile('mine');
     }
 
@@ -411,8 +482,12 @@
     if (del) {
       const ok = await UI.confirmDialog('Esta acción no se puede deshacer.', { title: '¿Eliminar publicación?', okText: 'Eliminar' });
       if (ok) {
-        Listings.remove(del.dataset.del);
-        toast('Publicación eliminada.', 'success');
+        try {
+          await Listings.remove(del.dataset.del);
+          toast('Publicación eliminada.', 'success');
+        } catch (err) {
+          toast(err.message, 'error');
+        }
         renderProfile('mine');
       }
       return;
@@ -431,12 +506,17 @@
     }
   });
 
-  function handleFav(id) {
+  async function handleFav(id) {
     if (!Auth.current()) {
       toast('Inicia sesión para guardar favoritos.', 'info');
       return openAuth('login');
     }
-    const on = Listings.toggleFav(id);
+    let on;
+    try {
+      on = await Listings.toggleFav(id);
+    } catch (err) {
+      return toast(err.message, 'error');
+    }
     toast(on ? 'Guardado en favoritos ❤️' : 'Eliminado de favoritos', on ? 'success' : 'info');
     // Actualiza todos los botones de esa publicación en pantalla
     $$(`[data-fav="${id}"]`).forEach((b) => {
@@ -449,7 +529,8 @@
 
   async function shareListing(id) {
     const url = `${location.href.split('#')[0]}#/p/${id}`;
-    const l = Listings.byId(id);
+    const l = Listings.byId(id) || (await Listings.fetchById(id).catch(() => null));
+    if (!l) return toast('Esta publicación ya no existe.', 'error');
     try {
       if (navigator.share) {
         await navigator.share({ title: l.title, text: `Mira esto en FORMALIN: ${l.title}`, url });
@@ -473,7 +554,7 @@
   const form = $('#publishForm');
   $('#pCategory').innerHTML = Listings.CATEGORIES.map((c) => `<option value="${c.id}">${c.emoji} ${esc(c.label)}</option>`).join('');
 
-  function startPublish(editId) {
+  async function startPublish(editId) {
     form.reset();
     draft.images = [];
     draft.editId = null;
@@ -481,7 +562,7 @@
     $('#submitPublish').innerHTML = `${icon('check')} Publicar`;
 
     if (editId) {
-      const l = Listings.byId(editId);
+      const l = Listings.byId(editId) || (await Listings.fetchById(editId).catch(() => null));
       const me = Auth.current();
       if (!l || l.ownerId !== me.id) {
         toast('No puedes editar esta publicación.', 'error');
@@ -613,14 +694,18 @@
     $('#previewWrap').innerHTML = UI.cardHTML(fake, { owner: false }).replace(/<button class="fav-btn[\s\S]*?<\/button>/, '');
   }
 
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!validateStep(2)) return goStep(2);
     if (!validateStep(3)) return goStep(3);
     const d = formData();
+    const btn = $('#submitPublish');
+    const label = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span> Guardando…`;
     try {
       if (draft.editId) {
-        Listings.update(draft.editId, {
+        await Listings.update(draft.editId, {
           ...d,
           price: Math.max(0, Number(d.price) || 0),
           unit: d.type === 'servicio' ? d.unit : '',
@@ -630,22 +715,36 @@
         });
         toast('Cambios guardados ✨', 'success');
       } else {
-        Listings.create(d);
+        await Listings.create(d);
         toast('¡Tu publicación ya está en FORMALIN! 🚀', 'success');
       }
       location.hash = '#/perfil';
     } catch (err) {
-      toast(err.code === 'QUOTA' ? 'El almacenamiento del navegador está lleno. Quita imágenes o elimina publicaciones antiguas.' : err.message, 'error');
+      toast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = label;
     }
   });
 
   /* =========================================================
      Perfil
      ========================================================= */
-  function renderProfile(tab = 'mine') {
+  async function renderProfile(tab = 'mine') {
     const me = Auth.current();
     if (!me) return;
-    const mine = Listings.byOwner(me.id);
+    $$('#profileTabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+    $$('.tab-panel').forEach((p) => (p.hidden = p.dataset.panel !== tab));
+    if (tab === 'mine') $('#myGrid').innerHTML = UI.skeletons(4);
+    if (tab === 'favs') $('#favGrid').innerHTML = UI.skeletons(4);
+
+    let mine;
+    try {
+      mine = await Listings.byOwner(me.id);
+    } catch (err) {
+      toast(err.message, 'error');
+      mine = [];
+    }
     const views = mine.reduce((s, l) => s + (l.views || 0), 0);
 
     $('#profileHeader').innerHTML = `
@@ -662,18 +761,15 @@
       <div class="profile-stats">
         <div><strong>${mine.length}</strong><span>Publicaciones</span></div>
         <div><strong>${views}</strong><span>Vistas</span></div>
-        <div><strong>${Listings.favorites().length}</strong><span>Favoritos</span></div>
+        <div><strong>${Listings.favCount()}</strong><span>Favoritos</span></div>
       </div>`;
-
-    $$('#profileTabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
-    $$('.tab-panel').forEach((p) => (p.hidden = p.dataset.panel !== tab));
 
     if (tab === 'mine') {
       $('#myGrid').innerHTML = mine.length
         ? mine.map((l) => UI.cardHTML(l, { owner: true })).join('')
         : UI.emptyHTML('📦', 'Aún no has publicado nada', 'Vende lo que ya no usas u ofrece tus habilidades a otros estudiantes.', `<a href="#/publicar" class="btn btn-primary">${icon('plus')} Crear publicación</a>`);
     } else if (tab === 'favs') {
-      const favs = Listings.favorites();
+      const favs = await Listings.favorites().catch((err) => { toast(err.message, 'error'); return []; });
       $('#favGrid').innerHTML = favs.length
         ? favs.map((l) => UI.cardHTML(l)).join('')
         : UI.emptyHTML('💙', 'No tienes favoritos', 'Toca el corazón en cualquier publicación para guardarla aquí.', `<a href="#/explorar" class="btn btn-primary">Explorar</a>`);
@@ -727,19 +823,21 @@
     });
   }
 
-  $('#profileForm').addEventListener('submit', (e) => {
+  $('#profileForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = e.target;
     if (!validate(f)) return;
     const data = Object.fromEntries(new FormData(f));
-    if (profileAvatar) data.avatar = profileAvatar;
+    const btn = f.querySelector('[type="submit"]');
+    btn.disabled = true;
     try {
-      Auth.updateProfile(data);
+      await Auth.updateProfile(data, profileAvatar);
       renderNav();
       renderProfile('edit');
       toast('Perfil actualizado ✅', 'success');
     } catch (err) {
-      toast(err.code === 'QUOTA' ? 'No hay espacio suficiente para guardar la foto.' : err.message, 'error');
+      toast(err.message, 'error');
+      btn.disabled = false;
     }
   });
 
@@ -755,21 +853,17 @@
   const onScroll = () => $('#navbar').classList.toggle('scrolled', window.scrollY > 10);
   window.addEventListener('scroll', onScroll, { passive: true });
 
-  // Sincroniza cambios hechos en otra pestaña
-  window.addEventListener('storage', (e) => {
-    if (e.key && e.key.startsWith('ut_')) { renderNav(); router(); }
-  });
-
   /* =========================================================
      Inicio de la app
      ========================================================= */
   (async () => {
+    if (!isConfigured) toast('La app no está conectada a Supabase. Revisa el archivo .env.', 'error');
     try {
-      await Seed.run();
+      await Auth.init(onAuthChange);
     } catch (err) {
-      console.warn('No se pudieron cargar los datos demo', err);
+      console.warn('No se pudo recuperar la sesión', err);
     }
-    renderNav();
+    await syncSession();
     onScroll();
     window.addEventListener('hashchange', router);
     router();
