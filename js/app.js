@@ -150,7 +150,30 @@ import { isConfigured } from './supabase.js';
     $('#registerForm').hidden = tab !== 'register';
     $('#loginError').textContent = $('#registerError').textContent = '';
     $('#loginError').classList.remove('ok');
+    setAccountType($('#registerForm'), 'estudiante');
   }
+
+  // Tipo de cuenta: muestra los campos del tipo elegido y solo esos son obligatorios
+  // (validate() revisa todos los [required], incluso los ocultos)
+  function setAccountType(form, type) {
+    type = type === 'negocio' ? 'negocio' : 'estudiante';
+    form.account_type.value = type;
+    $$('[data-account]', form).forEach((b) => b.classList.toggle('active', b.dataset.account === type));
+    $$('[data-for]', form).forEach((group) => {
+      const on = group.dataset.for === type;
+      group.hidden = !on;
+      $$('input, select', group).forEach((el) => {
+        if (el.dataset.req === undefined) el.dataset.req = el.required ? '1' : '';
+        el.required = on && el.dataset.req === '1';
+        if (!on) el.classList.remove('invalid');
+      });
+    });
+  }
+
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-account]');
+    if (b) setAccountType(b.closest('form'), b.dataset.account);
+  });
 
   $('#authTabs').addEventListener('click', (e) => {
     const b = e.target.closest('button');
@@ -203,11 +226,6 @@ import { isConfigured } from './supabase.js';
     const f = e.target;
     if (!validate(f)) return;
     $('#loginError').classList.remove('ok');
-    if (!Auth.isInstitutionalEmail(f.email.value)) {
-      f.email.classList.add('invalid');
-      $('#loginError').textContent = 'Usa tu correo institucional (@comfenalco.edu.co o @tecnologicocomfenalco.edu.co).';
-      return;
-    }
     const btn = f.querySelector('[type="submit"]');
     btn.disabled = true;
     try {
@@ -225,11 +243,6 @@ import { isConfigured } from './supabase.js';
     e.preventDefault();
     const f = e.target;
     if (!validate(f)) return;
-    if (!Auth.isInstitutionalEmail(f.email.value)) {
-      f.email.classList.add('invalid');
-      $('#registerError').textContent = 'Usa tu correo institucional (@comfenalco.edu.co o @tecnologicocomfenalco.edu.co).';
-      return;
-    }
     if (f.password.value.length < 6) {
       $('#registerError').textContent = 'La contraseña debe tener al menos 6 caracteres.';
       return;
@@ -245,6 +258,7 @@ import { isConfigured } from './supabase.js';
     try {
       const { user: u, needsConfirmation } = await Auth.register({ ...data, avatar: pendingAvatar });
       f.reset();
+      setAccountType(f, 'estudiante');
       pendingAvatar = '';
       $('#rAvatarPreview').innerHTML = icon('user');
       $('#strengthBar').style.width = '0';
@@ -753,8 +767,9 @@ import { isConfigured } from './supabase.js';
         <h1>${esc(me.name)}</h1>
         <p>${esc(me.email)}</p>
         <div class="profile-meta">
-          ${me.career ? `<span>🎓 ${esc(me.career)}</span>` : ''}
-          ${me.semester ? `<span>📅 ${esc(me.semester)}° semestre</span>` : ''}
+          ${me.accountType === 'negocio'
+            ? `${me.businessName ? `<span>🏪 ${esc(me.businessName)}</span>` : ''}${me.businessAbout ? `<span>${esc(me.businessAbout)}</span>` : ''}`
+            : `${me.career ? `<span>🎓 ${esc(me.career)}</span>` : ''}${me.semester ? `<span>📅 ${esc(me.semester)}° semestre</span>` : ''}`}
           ${me.phone ? `<span>📱 ${esc(me.phone)}</span>` : ''}
         </div>
       </div>
@@ -767,7 +782,7 @@ import { isConfigured } from './supabase.js';
     if (tab === 'mine') {
       $('#myGrid').innerHTML = mine.length
         ? mine.map((l) => UI.cardHTML(l, { owner: true })).join('')
-        : UI.emptyHTML('📦', 'Aún no has publicado nada', 'Vende lo que ya no usas u ofrece tus habilidades a otros estudiantes.', `<a href="#/publicar" class="btn btn-primary">${icon('plus')} Crear publicación</a>`);
+        : UI.emptyHTML('📦', 'Aún no has publicado nada', 'Vende lo que ya no usas u ofrece tus habilidades a la comunidad.', `<a href="#/publicar" class="btn btn-primary">${icon('plus')} Crear publicación</a>`);
     } else if (tab === 'favs') {
       const favs = await Listings.favorites().catch((err) => { toast(err.message, 'error'); return []; });
       $('#favGrid').innerHTML = favs.length
@@ -800,10 +815,22 @@ import { isConfigured } from './supabase.js';
         </label>
         <small class="hint">Toca para cambiar tu foto</small>
       </div>
+      <div class="field">
+        <label>Tipo de cuenta</label>
+        <div class="segmented account-pick" role="group" aria-label="Tipo de cuenta">
+          <button type="button" data-account="estudiante">🎓 Estudiante</button>
+          <button type="button" data-account="negocio">🏪 Negocio / emprendedor</button>
+        </div>
+        <input type="hidden" name="account_type" />
+      </div>
       <div class="field"><label for="pfName">Nombre completo</label><input id="pfName" name="name" value="${esc(me.name)}" required /></div>
-      <div class="row-2">
+      <div class="row-2" data-for="estudiante">
         <div class="field"><label for="pfCareer">Programa</label><input id="pfCareer" name="career" list="careers" value="${esc(me.career)}" required /></div>
         <div class="field"><label for="pfSem">Semestre</label><select id="pfSem" name="semester">${Array.from({ length: 10 }, (_, i) => `<option value="${i + 1}" ${String(i + 1) === String(me.semester) ? 'selected' : ''}>${i + 1}°</option>`).join('')}</select></div>
+      </div>
+      <div data-for="negocio">
+        <div class="field"><label for="pfBusiness">Nombre del negocio</label><input id="pfBusiness" name="business_name" value="${esc(me.businessName)}" required /></div>
+        <div class="field"><label for="pfAbout">¿Qué ofreces? <small>(opcional)</small></label><input id="pfAbout" name="business_about" maxlength="120" value="${esc(me.businessAbout)}" placeholder="Ej: Papelería, fotocopias y útiles" /></div>
       </div>
       <div class="field"><label for="pfPhone">WhatsApp / Teléfono</label><input id="pfPhone" name="phone" type="tel" value="${esc(me.phone)}" required /></div>
       <div class="row-2">
@@ -812,6 +839,7 @@ import { isConfigured } from './supabase.js';
       </div>
       <div class="field icon-field">${icon('facebook')}<input name="facebook" placeholder="Usuario o enlace de Facebook" value="${esc(me.facebook)}" /></div>
       <div class="form-nav"><span></span><button class="btn btn-primary" type="submit">${icon('check')} Guardar perfil</button></div>`;
+    setAccountType(f, me.accountType);
 
     $('#pfAvatar').addEventListener('change', async (e) => {
       const file = e.target.files[0];

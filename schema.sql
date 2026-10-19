@@ -37,8 +37,11 @@ create table if not exists public.profiles (
   id         uuid primary key references auth.users (id) on delete cascade,
   name       text not null default '',
   email      text not null default '',
+  account_type   text not null default 'estudiante' check (account_type in ('estudiante', 'negocio')),
   career     text not null default '',
   semester   text not null default '',
+  business_name  text not null default '',
+  business_about text not null default '',
   phone      text not null default '',
   instagram  text not null default '',
   facebook   text not null default '',
@@ -86,26 +89,8 @@ create table if not exists public.favorites (
 );
 
 -- ---------------------------------------------------------
---  Auth: dominio institucional y perfil automático
+--  Auth: perfil automático al registrarse
 -- ---------------------------------------------------------
-create or replace function public.enforce_email_domain()
-returns trigger
-language plpgsql
-set search_path = ''
-as $$
-begin
-  if new.email is null or lower(new.email) !~ '@(tecnologico)?comfenalco\.edu\.co$' then
-    raise exception 'Solo se permiten correos @comfenalco.edu.co o @tecnologicocomfenalco.edu.co';
-  end if;
-  return new;
-end;
-$$;
-
-drop trigger if exists enforce_email_domain on auth.users;
-create trigger enforce_email_domain
-  before insert or update of email on auth.users
-  for each row execute function public.enforce_email_domain();
-
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -115,13 +100,16 @@ as $$
 declare
   m jsonb := coalesce(new.raw_user_meta_data, '{}'::jsonb);
 begin
-  insert into public.profiles (id, email, name, career, semester, phone, instagram, facebook, tiktok)
+  insert into public.profiles (id, email, name, account_type, career, semester, business_name, business_about, phone, instagram, facebook, tiktok)
   values (
     new.id,
     lower(new.email),
     coalesce(m->>'name', ''),
+    case when m->>'account_type' = 'negocio' then 'negocio' else 'estudiante' end,
     coalesce(m->>'career', ''),
     coalesce(m->>'semester', ''),
+    coalesce(m->>'business_name', ''),
+    coalesce(m->>'business_about', ''),
     coalesce(m->>'phone', ''),
     coalesce(m->>'instagram', ''),
     coalesce(m->>'facebook', ''),

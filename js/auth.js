@@ -3,7 +3,6 @@ import { supabase, BUCKETS, publicUrl, dataUrlToBlob, friendlyError } from './su
 import { Store } from './storage.js';
 
 export const Auth = (() => {
-  const ALLOWED_DOMAINS = ['comfenalco.edu.co', 'tecnologicocomfenalco.edu.co'];
   const PENDING_AVATAR = 'ut_pending_avatar';
 
   let me = null; // perfil del usuario con sesión activa
@@ -12,10 +11,6 @@ export const Auth = (() => {
 
   const normEmail = (e) => String(e || '').trim().toLowerCase();
 
-  function isInstitutionalEmail(email) {
-    return /@(tecnologico)?comfenalco\.edu\.co$/i.test(normEmail(email));
-  }
-
   // Fila de la tabla profiles → objeto usuario que usa la interfaz
   function mapProfile(row) {
     if (!row) return null;
@@ -23,8 +18,11 @@ export const Auth = (() => {
       id: row.id,
       name: row.name || '',
       email: row.email || '',
+      accountType: row.account_type === 'negocio' ? 'negocio' : 'estudiante',
       career: row.career || '',
       semester: row.semester || '',
+      businessName: row.business_name || '',
+      businessAbout: row.business_about || '',
       phone: row.phone || '',
       instagram: row.instagram || '',
       facebook: row.facebook || '',
@@ -73,11 +71,14 @@ export const Auth = (() => {
 
   async function register(data) {
     const email = normEmail(data.email);
-    if (!isInstitutionalEmail(email)) throw new Error(`Usa tu correo institucional (${ALLOWED_DOMAINS.map((d) => '@' + d).join(' o ')}).`);
+    const isBusiness = data.account_type === 'negocio';
     const meta = {
       name: data.name.trim(),
-      career: (data.career || '').trim(),
-      semester: data.semester || '',
+      account_type: isBusiness ? 'negocio' : 'estudiante',
+      career: isBusiness ? '' : (data.career || '').trim(),
+      semester: isBusiness ? '' : data.semester || '',
+      business_name: isBusiness ? (data.business_name || '').trim() : '',
+      business_about: isBusiness ? (data.business_about || '').trim() : '',
       phone: (data.phone || '').trim(),
       instagram: cleanHandle(data.instagram),
       facebook: (data.facebook || '').trim(),
@@ -105,7 +106,6 @@ export const Auth = (() => {
 
   async function login(email, password) {
     email = normEmail(email);
-    if (!isInstitutionalEmail(email)) throw new Error('Usa tu correo institucional (@comfenalco.edu.co o @tecnologicocomfenalco.edu.co).');
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw new Error(friendlyError(error));
     knownUserId = data.user.id;
@@ -141,10 +141,15 @@ export const Auth = (() => {
 
   async function updateProfile(patch, avatarDataUrl) {
     if (!me) throw new Error('No has iniciado sesión.');
+    const type = (patch.account_type ?? me.accountType) === 'negocio' ? 'negocio' : 'estudiante';
+    const isBusiness = type === 'negocio';
     const row = {
       name: (patch.name ?? me.name).trim(),
-      career: (patch.career ?? me.career).trim(),
-      semester: patch.semester ?? me.semester,
+      account_type: type,
+      career: isBusiness ? '' : (patch.career ?? me.career).trim(),
+      semester: isBusiness ? '' : patch.semester ?? me.semester,
+      business_name: isBusiness ? (patch.business_name ?? me.businessName).trim() : '',
+      business_about: isBusiness ? (patch.business_about ?? me.businessAbout).trim() : '',
       phone: (patch.phone ?? me.phone).trim(),
       instagram: cleanHandle(patch.instagram ?? me.instagram),
       facebook: (patch.facebook ?? me.facebook).trim(),
@@ -161,5 +166,5 @@ export const Auth = (() => {
     return String(v || '').trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?(instagram|tiktok)\.com\/@?/i, '').replace(/\/$/, '');
   }
 
-  return { ALLOWED_DOMAINS, isInstitutionalEmail, init, current, getUser, cacheProfile, register, login, logout, updateProfile };
+  return { init, current, getUser, cacheProfile, register, login, logout, updateProfile };
 })();

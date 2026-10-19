@@ -39,6 +39,13 @@ export const UI = (() => {
     return `<span class="${cls}">${esc(initials(user.name))}</span>`;
   }
 
+  // Línea descriptiva del vendedor según su tipo de cuenta
+  function sellerInfo(user) {
+    if (!user) return '';
+    if (user.accountType === 'negocio') return ['🏪 ' + user.businessName, user.businessAbout].filter((x) => x && x !== '🏪 ').join(' · ');
+    return [user.career, user.semester && user.semester + '° semestre'].filter(Boolean).join(' · ');
+  }
+
   const placeholderImg =
     'data:image/svg+xml,' +
     encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"><rect width="400" height="300" fill="#E6EEFB"/><text x="200" y="170" font-size="64" text-anchor="middle">📦</text></svg>`);
@@ -63,7 +70,7 @@ export const UI = (() => {
           ${priceHTML(l)}
           <div class="card-foot">
             ${avatarHTML(user, 'sm')}
-            <span class="seller">${esc(user ? user.name.split(' ')[0] : 'Estudiante')}</span>
+            <span class="seller">${esc(user ? user.name.split(' ')[0] : 'Usuario')}</span>
             <span>${timeAgo(l.createdAt)}</span>
           </div>
         </div>
@@ -207,8 +214,8 @@ export const UI = (() => {
           <div class="seller-card">
             ${avatarHTML(user, 'lg')}
             <div>
-              <strong>${esc(user ? user.name : 'Estudiante')}</strong>
-              <small>${esc(user ? [user.career, user.semester && user.semester + '° semestre'].filter(Boolean).join(' · ') : '')}</small>
+              <strong>${esc(user ? user.name : 'Usuario')}</strong>
+              <small>${esc(sellerInfo(user))}</small>
             </div>
           </div>
           ${isMine ? `<a class="btn btn-ghost" href="#/editar/${l.id}" data-close-detail>${icon('edit')} Editar publicación</a>` : contactHTML(user, l)}

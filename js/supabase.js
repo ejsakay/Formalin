@@ -31,7 +31,6 @@ export function friendlyError(err, fallback = 'Algo salió mal. Inténtalo de nu
   if (/Invalid login credentials/i.test(msg)) return 'Correo o contraseña incorrectos.';
   if (/Email not confirmed/i.test(msg)) return 'Aún no confirmas tu correo. Revisa tu bandeja de entrada (y la carpeta de spam).';
   if (/already registered|already been registered/i.test(msg)) return 'Ya existe una cuenta con ese correo.';
-  if (/Solo se permiten correos|Database error saving new user/i.test(msg)) return 'Solo se permiten correos @comfenalco.edu.co o @tecnologicocomfenalco.edu.co.';
   if (/Password should be at least/i.test(msg)) return 'La contraseña debe tener al menos 6 caracteres.';
   if (/rate limit|too many/i.test(msg)) return 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.';
   if (/row-level security|permission denied/i.test(msg)) return 'No tienes permiso para hacer esto.';
