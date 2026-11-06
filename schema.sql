@@ -155,6 +155,12 @@ drop policy if exists "profiles_update_own" on public.profiles;
 create policy "profiles_update_own" on public.profiles for update
   using ((select auth.uid()) = id) with check ((select auth.uid()) = id);
 
+-- Privacidad (migración 004): correo, teléfono y redes no se leen desde la API.
+-- El contacto es solo por el chat interno. Las columnas se conservan.
+revoke select on public.profiles from anon, authenticated;
+grant select (id, name, account_type, career, semester, business_name, business_about, avatar_url, created_at)
+  on public.profiles to anon, authenticated;
+
 -- Publicaciones: lectura pública; solo el dueño crea, edita o elimina
 drop policy if exists "listings_select" on public.listings;
 create policy "listings_select" on public.listings for select using (true);
