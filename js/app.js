@@ -3,6 +3,7 @@ import { Store } from './storage.js';
 import { Auth } from './auth.js';
 import { Listings } from './listings.js';
 import { UI } from './ui.js';
+import { Chat } from './chat.js';
 import { isConfigured } from './supabase.js';
 
 (() => {
@@ -46,6 +47,10 @@ import { isConfigured } from './supabase.js';
     const { route, param, params } = parseHash();
     closeModal('detailModal');
     window.scrollTo(0, 0);
+    if (route !== 'mensajes' && route !== 'contactar') {
+      closeConversation();
+      document.body.classList.remove('chat-mode', 'chat-open');
+    }
 
     switch (route) {
       case 'explorar':
@@ -69,6 +74,16 @@ import { isConfigured } from './supabase.js';
         setActiveNav(params.get('tab') === 'favs' ? 'favs' : 'perfil');
         renderProfile(params.get('tab') || 'mine');
         break;
+      case 'mensajes':
+        if (!requireAuth(location.hash)) return;
+        showView('view-messages');
+        setActiveNav('mensajes');
+        renderMessages(param || null);
+        break;
+      case 'contactar': // botón "Contactar por FORMALIN": abre o crea la conversación
+        if (!requireAuth(location.hash)) return;
+        startChat(param);
+        break;
       case 'p': // enlace compartido a una publicación
         showView('view-home');
         setActiveNav('');
@@ -90,6 +105,8 @@ import { isConfigured } from './supabase.js';
   function renderNav() {
     const me = Auth.current();
     const box = $('#navAuth');
+    $$('[data-auth-only]').forEach((el) => (el.hidden = !me));
+    updateUnreadBadges();
     if (!me) {
       box.innerHTML = `
         <button class="btn btn-ghost btn-sm hide-sm" data-auth="login">Ingresar</button>
@@ -102,12 +119,14 @@ import { isConfigured } from './supabase.js';
         <button class="user-chip" id="userChip" aria-haspopup="true" aria-expanded="false">${UI.avatarHTML(me, 'sm')}<span class="uname">${esc(me.name.split(' ')[0])}</span></button>
         <div class="dropdown" id="userDropdown" role="menu">
           <a href="#/perfil" role="menuitem">${icon('user')} Mi perfil</a>
+          <a href="#/mensajes" role="menuitem">${icon('chat')} Mensajes <span class="unread-badge" data-unread hidden></span></a>
           <a href="#/perfil?tab=favs" role="menuitem">${icon('heart')} Favoritos</a>
           <a href="#/publicar" role="menuitem">${icon('plus')} Nueva publicación</a>
           <hr>
           <button class="danger" id="logoutBtn" role="menuitem">${icon('logout')} Cerrar sesión</button>
         </div>
       </div>`;
+    updateUnreadBadges();
   }
 
   document.addEventListener('click', (e) => {
@@ -277,6 +296,7 @@ import { isConfigured } from './supabase.js';
   let sessionUserId = null;
   async function syncSession() {
     sessionUserId = Auth.current()?.id || null;
+    Chat.connect(sessionUserId); // abre (o cierra) el canal de tiempo real del chat
     await Listings.loadFavs();
     renderNav();
   }
@@ -286,7 +306,7 @@ import { isConfigured } from './supabase.js';
     if ((Auth.current()?.id || null) === sessionUserId) return;
     await syncSession();
     const { route } = parseHash();
-    if (!Auth.current() && ['publicar', 'editar', 'perfil'].includes(route)) location.hash = '#/';
+    if (!Auth.current() && ['publicar', 'editar', 'perfil', 'mensajes', 'contactar'].includes(route)) location.hash = '#/';
     else router();
   }
 
@@ -857,6 +877,536 @@ import { isConfigured } from './supabase.js';
       btn.disabled = false;
     }
   });
+
+  /* =========================================================
+     Mensajes (chat interno)
+     ========================================================= */
+  const chat = { convId: null, msgs: [], pending: new Map(), hasMore: false, photos: [], search: '', loadingOlder: false, seen: new Set() };
+  const timeFmt = new Intl.DateTimeFormat('es-CO', { hour: 'numeric', minute: '2-digit' });
+  const dateFmt = new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'short' });
+  const dayFmt = new Intl.DateTimeFormat('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
+  const sameDay = (a, b) => new Date(a).toDateString() === new Date(b).toDateString();
+  const messagesVisible = () => !$('#view-messages').hidden;
+
+  function shortTime(ts) {
+    if (sameDay(ts, Date.now())) return timeFmt.format(ts);
+    if (sameDay(ts, Date.now() - 86400000)) return 'Ayer';
+    return dateFmt.format(ts);
+  }
+  function dayLabel(ts) {
+    if (sameDay(ts, Date.now())) return 'Hoy';
+    if (sameDay(ts, Date.now() - 86400000)) return 'Ayer';
+    return dayFmt.format(ts);
+  }
+
+  // Contador global en la navegación y en el título de la pestaña
+  const baseTitle = document.title;
+  function updateUnreadBadges() {
+    const n = Auth.current() ? Chat.totalUnread() : 0;
+    $$('[data-unread]').forEach((b) => { b.hidden = !n; b.textContent = n > 99 ? '99+' : n; });
+    document.title = n ? `(${n}) ${baseTitle}` : baseTitle;
+  }
+
+  async function renderMessages(convId) {
+    document.body.classList.add('chat-mode');
+    document.body.classList.toggle('chat-open', Boolean(convId));
+    $('#chatLayout').classList.toggle('has-conv', Boolean(convId));
+    if (!Chat.list().length) $('#inboxList').innerHTML = inboxSkeleton();
+    else renderInbox();
+    const loadInbox = reloadInbox();
+    if (convId) {
+      if (convId !== chat.convId || !$('#chatThread')) await openConversation(convId);
+    } else {
+      closeConversation();
+      renderPaneEmpty();
+    }
+    await loadInbox;
+  }
+
+  function inboxSkeleton() {
+    return Array.from({ length: 4 }, () => `<div class="inbox-item sk-item"><span class="sk sk-avatar"></span><div><div class="sk sk-line"></div><div class="sk sk-line short"></div></div></div>`).join('');
+  }
+
+  let inboxReq = 0;
+  async function reloadInbox() {
+    const req = ++inboxReq;
+    try {
+      await Chat.inbox();
+    } catch (err) {
+      if (req === inboxReq) $('#inboxList').innerHTML = `<p class="inbox-empty">${esc(err.message)}</p>`;
+      return;
+    }
+    if (req === inboxReq && messagesVisible()) renderInbox();
+  }
+
+  function renderInbox() {
+    const me = Auth.current();
+    if (!me) return;
+    const q = Listings.normalize(chat.search.trim());
+    // El vendedor no ve conversaciones vacías (el comprador abrió el chat pero aún no escribió)
+    const items = Chat.list().filter((c) => c.hasMessages || !c.iAmSeller).filter((c) => {
+      if (!q) return true;
+      const other = Auth.getUser(c.otherId);
+      return Listings.normalize(`${other?.name || ''} ${c.listing.title} ${c.preview}`).includes(q);
+    });
+    if (!items.length) {
+      $('#inboxList').innerHTML = q
+        ? `<p class="inbox-empty">No hay conversaciones que coincidan.</p>`
+        : `<div class="inbox-empty"><span class="empty-emoji">💬</span><strong>Aún no tienes mensajes</strong><p>Cuando escribas a un vendedor o alguien te escriba, la conversación aparecerá aquí.</p><a href="#/explorar" class="btn btn-primary btn-sm">Explorar publicaciones</a></div>`;
+      return;
+    }
+    $('#inboxList').innerHTML = items.map((c) => {
+      const other = Auth.getUser(c.otherId);
+      const n = Chat.unreadOf(c.id);
+      const mine = c.lastSenderId === me.id;
+      return `
+        <a class="inbox-item ${c.id === chat.convId ? 'active' : ''} ${n ? 'unread' : ''}" href="#/mensajes/${c.id}" role="listitem">
+          ${UI.avatarHTML(other)}
+          <div class="inbox-main">
+            <div class="inbox-top"><strong>${esc(other?.name || 'Usuario')}</strong><time>${c.hasMessages ? shortTime(c.lastAt) : ''}</time></div>
+            <span class="inbox-listing">${c.iAmSeller ? '🏷️' : '🛍️'} ${esc(c.listing.title)}</span>
+            <div class="inbox-bottom"><span class="inbox-preview">${c.hasMessages ? `${mine ? 'Tú: ' : ''}${esc(c.preview)}` : '<em>Escribe el primer mensaje</em>'}</span>${n ? `<span class="unread-badge">${n > 99 ? '99+' : n}</span>` : ''}</div>
+          </div>
+        </a>`;
+    }).join('');
+  }
+
+  $('#inboxSearch').addEventListener('input', (e) => { chat.search = e.target.value; renderInbox(); });
+
+  function renderPaneEmpty() {
+    $('#chatPane').innerHTML = `
+      <div class="chat-placeholder">
+        <span class="empty-emoji">💬</span>
+        <h3>Tus conversaciones</h3>
+        <p>Elige una conversación para leerla. Para escribir a un vendedor, abre una publicación y pulsa <strong>Contactar por FORMALIN</strong>.</p>
+      </div>`;
+  }
+
+  function closeConversation() {
+    chat.convId = null;
+    chat.msgs = [];
+    chat.pending.clear();
+    chat.photos = [];
+    chat.hasMore = false;
+    chat.seen.clear();
+  }
+
+  let openReq = 0;
+  async function openConversation(id) {
+    const req = ++openReq;
+    closeConversation();
+    chat.convId = id;
+    $('#chatPane').innerHTML = `<div class="chat-placeholder"><span class="spinner"></span></div>`;
+    try {
+      const c = await Chat.get(id, { fresh: true });
+      if (req !== openReq) return;
+      if (!c) throw new Error('Esta conversación no existe o no tienes acceso.');
+      renderPane(c);
+      const page = await Chat.messages(id);
+      if (req !== openReq) return;
+      chat.msgs = page.messages;
+      chat.hasMore = page.hasMore;
+      page.messages.forEach((m) => chat.seen.add(m.clientId || m.id));
+      renderThread({ toBottom: true });
+      markReadIfVisible();
+      renderInbox();
+      if (window.matchMedia('(min-width: 721px)').matches) $('#composeText')?.focus();
+    } catch (err) {
+      if (req !== openReq) return;
+      toast(err.message, 'error');
+      location.replace('#/mensajes');
+    }
+  }
+
+  function listingCardHTML(c) {
+    const l = c.listing;
+    const status = !l.exists ? 'Publicación eliminada' : l.status === 'vendido' ? 'No disponible' : '';
+    const img = l.image ? `<img src="${esc(l.image)}" alt="">` : `<span class="chat-listing-ph">📦</span>`;
+    const inner = `${img}<div><small>Publicación relacionada</small><strong>${esc(l.title)}</strong><span>${l.price ? UI.money.format(l.price) : 'A convenir'}${status ? ` · <em>${status}</em>` : ''}</span></div>${l.exists ? icon('chev-r') : ''}`;
+    return l.exists
+      ? `<button class="chat-listing" data-open-listing="${c.listingId}">${inner}</button>`
+      : `<div class="chat-listing off">${inner}</div>`;
+  }
+
+  function renderPane(c) {
+    const other = Auth.getUser(c.otherId);
+    const info = UI.sellerInfo(other);
+    $('#chatPane').innerHTML = `
+      <header class="chat-head">
+        <a href="#/mensajes" class="icon-btn chat-back" aria-label="Volver a la bandeja">${icon('arrow-l')}</a>
+        ${UI.avatarHTML(other)}
+        <div class="chat-who">
+          <strong>${esc(other?.name || 'Usuario')}</strong>
+          <small>${c.iAmSeller ? 'Interesado en tu publicación' : 'Vendedor'}${info ? ` · ${esc(info)}` : ''}</small>
+        </div>
+        <div class="user-menu">
+          <button class="icon-btn" id="chatMenuBtn" aria-label="Opciones de la conversación" aria-haspopup="true">${icon('more')}</button>
+          <div class="dropdown" id="chatMenu" role="menu"></div>
+        </div>
+      </header>
+      ${listingCardHTML(c)}
+      <div class="chat-thread" id="chatThread"></div>
+      <div class="chat-bottom" id="chatBottom"></div>`;
+    renderComposer();
+  }
+
+  function renderComposer() {
+    const c = Chat.cached(chat.convId);
+    if (!c || !$('#chatBottom')) return;
+    const blocked = Chat.isBlocked(c.otherId);
+    $('#chatMenu').innerHTML = `
+      <button role="menuitem" data-chat-block>${icon('block')} ${blocked ? 'Desbloquear usuario' : 'Bloquear usuario'}</button>
+      <button role="menuitem" class="danger" data-chat-report>${icon('flag')} Reportar conversación</button>`;
+    if (blocked) {
+      $('#chatBottom').innerHTML = `<div class="chat-blocked">${icon('block')} <span>Bloqueaste a este usuario. No puede escribirte.</span> <button class="link-btn" data-chat-block>Desbloquear</button></div>`;
+      return;
+    }
+    if ($('#chatCompose')) return; // ya existe: conserva lo que se está escribiendo
+    $('#chatBottom').innerHTML = `
+      <div class="compose-photos" id="composePhotos" hidden></div>
+      <form class="chat-compose" id="chatCompose" novalidate>
+        <label class="icon-btn compose-attach" aria-label="Adjuntar fotos" title="Adjuntar fotos">
+          ${icon('image')}<input type="file" accept="image/jpeg,image/png,image/webp" multiple hidden id="composeFile" />
+        </label>
+        <textarea id="composeText" rows="1" maxlength="${Chat.MAX_LEN}" placeholder="Escribe un mensaje…" aria-label="Mensaje" enterkeyhint="send"></textarea>
+        <button class="btn btn-primary compose-send" type="submit" aria-label="Enviar">${icon('send')}</button>
+      </form>
+      <small class="compose-hint">Enter para enviar · Shift + Enter para nueva línea · Nunca compartas contraseñas ni datos bancarios.</small>`;
+  }
+
+  // Burbujas: mensajes confirmados + los que se están enviando
+  function renderThread({ toBottom = false, keepFrom = null } = {}) {
+    const box = $('#chatThread');
+    if (!box) return;
+    const me = Auth.current();
+    const all = [...chat.msgs, ...chat.pending.values()].sort((a, b) => a.createdAt - b.createdAt);
+    const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
+    let html = chat.hasMore ? `<button class="btn btn-ghost btn-sm load-older" data-load-older>${chat.loadingOlder ? '<span class="spinner"></span>' : 'Ver mensajes anteriores'}</button>` : '';
+    if (!all.length) html += `<div class="chat-hello">👋 Saluda y pregunta lo que necesites sobre la publicación.</div>`;
+    let prev = null;
+    for (const m of all) {
+      if (!prev || !sameDay(prev.createdAt, m.createdAt)) html += `<div class="day-sep"><span>${dayLabel(m.createdAt)}</span></div>`;
+      html += bubbleHTML(m, m.senderId === me.id);
+      prev = m;
+    }
+    const oldHeight = box.scrollHeight;
+    box.innerHTML = html;
+    if (keepFrom !== null) box.scrollTop = box.scrollHeight - oldHeight + keepFrom;
+    else if (toBottom || nearBottom) box.scrollTop = box.scrollHeight;
+  }
+
+  function bubbleHTML(m, mine) {
+    const key = m.clientId || m.id;
+    const isNew = !chat.seen.has(key);
+    chat.seen.add(key);
+    const photos = m.photos.length
+      ? `<div class="bubble-photos n${Math.min(m.photos.length, 3)}">${m.photos.map((p) => p.url
+        ? `<a href="${esc(p.url)}" target="_blank" rel="noopener"><img src="${esc(p.url)}" alt="Foto adjunta" loading="lazy"></a>`
+        : `<span class="photo-missing">📷</span>`).join('')}</div>`
+      : '';
+    let status = '';
+    if (mine) {
+      if (m.status === 'sending') status = `<span class="msg-status" title="Enviando">🕓</span>`;
+      else if (m.status === 'error') status = `<span class="msg-status err">No se envió · <button class="link-btn" data-retry="${m.clientId}">Reintentar</button></span>`;
+      else status = `<span class="msg-status ${m.readAt ? 'read' : ''}" title="${m.readAt ? 'Leído' : 'Enviado'}">${icon(m.readAt ? 'checks' : 'check')}</span>`;
+    }
+    return `
+      <div class="bubble-row ${mine ? 'mine' : ''} ${isNew ? 'anim' : ''}" data-msg="${m.id}">
+        <div class="bubble ${m.status === 'error' ? 'failed' : ''}">
+          ${photos}
+          ${m.content ? `<p>${esc(m.content)}</p>` : ''}
+          <span class="bubble-meta">${timeFmt.format(m.createdAt)} ${status}</span>
+        </div>
+      </div>`;
+  }
+
+  function upsertMessage(m) {
+    if (m.convId !== chat.convId) return;
+    if (m.clientId) chat.pending.delete(m.clientId);
+    const i = chat.msgs.findIndex((x) => x.id === m.id);
+    if (i >= 0) {
+      const old = chat.msgs[i];
+      const photos = m.photos.length && m.photos.every((p) => p.url) ? m.photos : old.photos;
+      chat.msgs[i] = { ...old, ...m, photos };
+    } else {
+      chat.msgs.push(m);
+    }
+    chat.msgs.sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  function markReadIfVisible() {
+    if (chat.convId && messagesVisible() && document.visibilityState === 'visible' && Chat.unreadOf(chat.convId)) {
+      Chat.markRead(chat.convId).then(renderInbox);
+    }
+  }
+
+  async function sendMessage(retryId = null) {
+    const convId = chat.convId;
+    if (!convId) return;
+    let item;
+    if (retryId) {
+      item = chat.pending.get(retryId);
+      if (!item || item.status === 'sending') return;
+      item.status = 'sending';
+    } else {
+      const ta = $('#composeText');
+      const text = ta.value.trim();
+      if (!text && !chat.photos.length) return;
+      if (text.length > Chat.MAX_LEN) return toast(`Máximo ${Chat.MAX_LEN} caracteres.`, 'error');
+      const clientId = crypto.randomUUID();
+      item = {
+        id: clientId, clientId, convId, senderId: Auth.current().id, content: text, createdAt: Date.now(), readAt: null,
+        status: 'sending', dataUrls: [...chat.photos], photos: chat.photos.map((url) => ({ path: '', url })),
+      };
+      chat.pending.set(clientId, item);
+      ta.value = '';
+      autoGrow(ta);
+      chat.photos = [];
+      renderComposePhotos();
+    }
+    renderThread({ toBottom: true });
+    try {
+      const msg = await Chat.send(convId, { text: item.content, photos: item.dataUrls, clientId: item.clientId });
+      if (chat.convId !== convId) return;
+      upsertMessage(msg);
+    } catch (err) {
+      if (chat.convId !== convId) return;
+      item.status = 'error';
+      toast(err.message, 'error');
+    }
+    renderThread();
+    renderInbox();
+  }
+
+  function autoGrow(ta) {
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(ta.scrollHeight, 140) + 'px';
+  }
+
+  function renderComposePhotos() {
+    const box = $('#composePhotos');
+    if (!box) return;
+    box.hidden = !chat.photos.length;
+    box.innerHTML = chat.photos.map((src, i) => `<div class="thumb"><img src="${src}" alt="Foto ${i + 1}"><button type="button" data-rm-photo="${i}" aria-label="Quitar foto">${icon('x')}</button></div>`).join('');
+  }
+
+  async function addChatPhotos(fileList) {
+    const files = [...fileList];
+    const valid = files.filter((f) => /^image\/(jpeg|png|webp)$/.test(f.type));
+    if (valid.length < files.length) toast('Solo se permiten fotos JPG, PNG o WEBP.', 'error');
+    const room = Chat.MAX_PHOTOS - chat.photos.length;
+    if (room <= 0) return toast(`Máximo ${Chat.MAX_PHOTOS} fotos por mensaje.`, 'error');
+    if (valid.length > room) toast(`Solo se agregarán ${room} foto(s) (máximo ${Chat.MAX_PHOTOS}).`, 'info');
+    for (const f of valid.slice(0, room)) {
+      if (f.size > 15 * 1024 * 1024) { toast('Esa foto es demasiado grande (máximo 15 MB).', 'error'); continue; }
+      try {
+        chat.photos.push(await Listings.compressImage(f, 1280, 0.82));
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    }
+    renderComposePhotos();
+  }
+
+  // Eventos del panel de chat (delegados)
+  const pane = $('#chatPane');
+  pane.addEventListener('submit', (e) => {
+    if (e.target.id !== 'chatCompose') return;
+    e.preventDefault();
+    sendMessage();
+  });
+  pane.addEventListener('keydown', (e) => {
+    if (e.target.id === 'composeText' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+  pane.addEventListener('input', (e) => { if (e.target.id === 'composeText') autoGrow(e.target); });
+  pane.addEventListener('change', (e) => {
+    if (e.target.id === 'composeFile') { addChatPhotos(e.target.files); e.target.value = ''; }
+  });
+  pane.addEventListener('click', async (e) => {
+    const rm = e.target.closest('[data-rm-photo]');
+    if (rm) { chat.photos.splice(Number(rm.dataset.rmPhoto), 1); return renderComposePhotos(); }
+    const retry = e.target.closest('[data-retry]');
+    if (retry) return sendMessage(retry.dataset.retry);
+    const listing = e.target.closest('[data-open-listing]');
+    if (listing) return UI.openDetail(listing.dataset.openListing);
+    if (e.target.closest('#chatMenuBtn')) return $('#chatMenu').classList.toggle('open');
+    $('#chatMenu')?.classList.remove('open');
+    if (e.target.closest('[data-chat-block]')) return toggleBlock();
+    if (e.target.closest('[data-chat-report]')) return openReport();
+    if (e.target.closest('[data-load-older]') && !chat.loadingOlder && chat.msgs.length) {
+      const convId = chat.convId;
+      chat.loadingOlder = true;
+      renderThread({ keepFrom: $('#chatThread').scrollTop });
+      try {
+        const page = await Chat.messages(convId, { before: chat.msgs[0].createdAt });
+        if (chat.convId !== convId) return;
+        chat.msgs = [...page.messages, ...chat.msgs];
+        page.messages.forEach((m) => chat.seen.add(m.clientId || m.id));
+        chat.hasMore = page.hasMore;
+      } catch (err) {
+        toast(err.message, 'error');
+      } finally {
+        chat.loadingOlder = false;
+      }
+      renderThread({ keepFrom: $('#chatThread').scrollTop });
+    }
+  });
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#chatPane')) $('#chatMenu')?.classList.remove('open');
+  });
+
+  // Botón "Contactar por FORMALIN" del detalle de una publicación
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-chat]');
+    if (b) location.hash = `#/contactar/${b.dataset.chat}`;
+  });
+
+  async function startChat(listingId) {
+    showView('view-messages');
+    setActiveNav('mensajes');
+    document.body.classList.add('chat-mode', 'chat-open');
+    $('#chatLayout').classList.add('has-conv');
+    $('#chatPane').innerHTML = `<div class="chat-placeholder"><span class="spinner"></span></div>`;
+    try {
+      const id = await Chat.start(listingId);
+      location.replace(`#/mensajes/${id}`);
+    } catch (err) {
+      toast(err.message, 'error');
+      location.replace('#/mensajes');
+    }
+  }
+
+  /* ---- Bloqueos y reportes ---- */
+  async function toggleBlock() {
+    const c = Chat.cached(chat.convId);
+    if (!c) return;
+    const other = Auth.getUser(c.otherId);
+    const name = other ? other.name.split(' ')[0] : 'este usuario';
+    try {
+      if (Chat.isBlocked(c.otherId)) {
+        await Chat.unblock(c.otherId);
+        toast(`Desbloqueaste a ${name}.`, 'success');
+      } else {
+        const ok = await UI.confirmDialog(`${name} no podrá escribirte ni iniciar conversaciones contigo. Puedes desbloquearlo cuando quieras.`, { title: `¿Bloquear a ${name}?`, okText: 'Bloquear' });
+        if (!ok) return;
+        await Chat.block(c.otherId);
+        toast(`Bloqueaste a ${name}.`, 'success');
+      }
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+    renderComposer();
+  }
+
+  function openReport() {
+    if (!chat.convId) return;
+    const f = $('#reportForm');
+    f.reset();
+    $('#reportReasons').innerHTML = Chat.REPORT_REASONS.map((r, i) => `<label class="chip-radio"><input type="radio" name="reason" value="${r.id}" ${i === 0 ? 'checked' : ''}><span>${esc(r.label)}</span></label>`).join('');
+    f.dataset.conv = chat.convId;
+    openModal('reportModal');
+  }
+
+  $('#reportForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const btn = f.querySelector('[type="submit"]');
+    btn.disabled = true;
+    try {
+      await Chat.report(f.dataset.conv, f.reason.value, f.details.value);
+      const c = Chat.cached(f.dataset.conv);
+      if (f.block.checked && c && !Chat.isBlocked(c.otherId)) await Chat.block(c.otherId);
+      closeModal('reportModal');
+      toast('Gracias. Recibimos tu reporte y lo revisaremos.', 'success');
+      renderComposer();
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  async function openBlocked() {
+    $('#blockedList').innerHTML = `<span class="spinner"></span>`;
+    openModal('blockedModal');
+    renderBlocked(await Chat.blockedUsers().catch(() => []));
+  }
+  function renderBlocked(users) {
+    $('#blockedList').innerHTML = users.length
+      ? users.map((u) => `<div class="blocked-item">${UI.avatarHTML(u, 'sm')}<span>${esc(u.name || 'Usuario')}</span><button class="btn btn-ghost btn-sm" data-unblock="${u.id}">Desbloquear</button></div>`).join('')
+      : `<p class="hint">No has bloqueado a nadie.</p>`;
+  }
+  $('#blockedBtn').addEventListener('click', openBlocked);
+  $('#blockedList').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-unblock]');
+    if (!b) return;
+    b.disabled = true;
+    try {
+      await Chat.unblock(b.dataset.unblock);
+      toast('Usuario desbloqueado.', 'success');
+      renderBlocked(await Chat.blockedUsers());
+      renderComposer();
+    } catch (err) {
+      toast(err.message, 'error');
+      b.disabled = false;
+    }
+  });
+
+  /* ---- Tiempo real ---- */
+  Chat.on(async (type, data) => {
+    if (!Auth.current()) return updateUnreadBadges();
+    if (type === 'unread') {
+      updateUnreadBadges();
+      if (messagesVisible()) renderInbox();
+    } else if (type === 'message') {
+      const { msg, mine, known } = data;
+      const open = msg.convId === chat.convId && messagesVisible();
+      if (open) {
+        upsertMessage(msg);
+        renderThread();
+        if (!mine) markReadIfVisible();
+      } else if (!mine) {
+        const c = Chat.cached(msg.convId) || (await Chat.get(msg.convId).catch(() => null));
+        const other = c && Auth.getUser(c.otherId);
+        toast(`Nuevo mensaje de ${other ? other.name.split(' ')[0] : 'un usuario'}${msg.content ? `: ${msg.content.slice(0, 60)}` : ' (foto)'}`, 'info');
+      }
+      if (messagesVisible()) (known ? renderInbox() : reloadInbox());
+    } else if (type === 'message:update') {
+      const m = chat.msgs.find((x) => x.id === data.id);
+      if (m && m.readAt !== data.readAt) { m.readAt = data.readAt; renderThread(); }
+    } else if (type === 'conversation') {
+      if (messagesVisible()) (data.known ? renderInbox() : reloadInbox());
+    } else if (type === 'blocks') {
+      renderComposer();
+    } else if (type === 'resync') {
+      // Tras (re)conectar: recupera lo que haya llegado mientras tanto
+      if (!messagesVisible()) return;
+      reloadInbox();
+      const convId = chat.convId;
+      if (!convId || !$('#chatThread')) return;
+      const page = await Chat.messages(convId).catch(() => null);
+      if (!page || chat.convId !== convId) return;
+      page.messages.forEach(upsertMessage);
+      renderThread();
+      markReadIfVisible();
+    }
+  });
+  document.addEventListener('visibilitychange', markReadIfVisible);
+
+  // Teclado virtual en móvil: el alto visible real se expone como --vvh
+  if (window.visualViewport) {
+    const setVvh = () => {
+      const st = document.documentElement.style;
+      st.setProperty('--vvh', `${window.visualViewport.height}px`);
+      st.setProperty('--vvt', `${window.visualViewport.offsetTop}px`);
+    };
+    window.visualViewport.addEventListener('resize', setVvh);
+    window.visualViewport.addEventListener('scroll', setVvh);
+    setVvh();
+  }
 
   /* =========================================================
      Tema y navbar

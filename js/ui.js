@@ -268,5 +268,5 @@ export const UI = (() => {
     setTimeout(() => span.remove(), 600);
   });
 
-  return { $, $$, esc, icon, money, priceHTML, timeAgo, avatarHTML, cardHTML, skeletons, emptyHTML, toast, openModal, closeModal, confirmDialog, openDetail, reveal, countUp };
+  return { $, $$, esc, icon, money, priceHTML, timeAgo, avatarHTML, sellerInfo, cardHTML, skeletons, emptyHTML, toast, openModal, closeModal, confirmDialog, openDetail, reveal, countUp };
 })();

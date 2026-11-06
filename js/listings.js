@@ -246,5 +246,5 @@ export const Listings = (() => {
     });
   }
 
-  return { CATEGORIES, catById, byId, fetchById, byOwner, create, update, remove, addView, query, loadFavs, isFav, favCount, toggleFav, favorites, compressImage };
+  return { CATEGORIES, catById, byId, fetchById, byOwner, create, update, remove, addView, query, loadFavs, isFav, favCount, toggleFav, favorites, compressImage, normalize };
 })();

@@ -2,7 +2,7 @@
 <html lang="es" data-theme="light">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>FORMALIN · Tu aliado para crecer formalmente</title>
   <meta name="description" content="FORMALIN, tu aliado para crecer formalmente. Formalín es la plataforma digital donde conectas tu necesidad con la solución ideal, impulsando a emprendedores y negocios con conexiones seguras y eficientes." />
   <meta name="theme-color" content="#0B2D6B" />
@@ -63,6 +63,7 @@
         <a href="#/" data-route="">Inicio</a>
         <a href="#/explorar" data-route="explorar">Explorar</a>
         <a href="#/publicar" data-route="publicar">Publicar</a>
+        <a href="#/mensajes" data-route="mensajes" data-auth-only hidden>Mensajes <span class="unread-badge" data-unread hidden></span></a>
       </nav>
 
       <div class="nav-actions">
@@ -312,6 +313,26 @@
       </div>
     </section>
 
+    <!-- ============ MENSAJES ============ -->
+    <section class="view" id="view-messages" hidden>
+      <div class="container chat-wrap">
+        <div class="chat-layout" id="chatLayout">
+          <aside class="chat-inbox" aria-label="Conversaciones">
+            <div class="inbox-head">
+              <h1>Mensajes 💬</h1>
+              <button class="icon-btn" id="blockedBtn" aria-label="Usuarios bloqueados" title="Usuarios bloqueados"><svg class="ic"><use href="#i-block"/></svg></button>
+            </div>
+            <label class="inbox-search">
+              <svg class="ic"><use href="#i-search"/></svg>
+              <input id="inboxSearch" type="search" placeholder="Buscar por nombre o publicación" autocomplete="off" />
+            </label>
+            <div class="inbox-list" id="inboxList" role="list"></div>
+          </aside>
+          <section class="chat-pane" id="chatPane" aria-live="polite"></section>
+        </div>
+      </div>
+    </section>
+
     <!-- ============ PERFIL ============ -->
     <section class="view" id="view-profile" hidden>
       <div class="profile-hero">
@@ -347,7 +368,7 @@
     <a href="#/" data-route=""><svg class="ic"><use href="#i-home"/></svg><span>Inicio</span></a>
     <a href="#/explorar" data-route="explorar"><svg class="ic"><use href="#i-grid"/></svg><span>Explorar</span></a>
     <a href="#/publicar" data-route="publicar" class="bn-cta"><span class="bn-plus"><svg class="ic"><use href="#i-plus"/></svg></span></a>
-    <a href="#/perfil?tab=favs" data-route="favs"><svg class="ic"><use href="#i-heart"/></svg><span>Favoritos</span></a>
+    <a href="#/mensajes" data-route="mensajes" class="bn-msgs"><svg class="ic"><use href="#i-chat"/></svg><span>Mensajes</span><span class="unread-badge" data-unread hidden></span></a>
     <a href="#/perfil" data-route="perfil"><svg class="ic"><use href="#i-user"/></svg><span>Perfil</span></a>
   </nav>
 
@@ -460,6 +481,37 @@
         <button class="btn btn-ghost" id="confirmNo">Cancelar</button>
         <button class="btn btn-danger" id="confirmYes">Confirmar</button>
       </div>
+    </div>
+  </div>
+
+  <div class="modal" id="reportModal" aria-hidden="true">
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-dialog confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="reportTitle">
+      <button class="icon-btn modal-close" data-close aria-label="Cerrar"><svg class="ic"><use href="#i-x"/></svg></button>
+      <h3 id="reportTitle">Reportar conversación</h3>
+      <p class="hint">El equipo de FORMALIN revisará el reporte. La otra persona no sabrá que la reportaste.</p>
+      <form id="reportForm" novalidate>
+        <div class="report-reasons" id="reportReasons"></div>
+        <div class="field">
+          <label for="reportDetails">Detalles <small>(opcional)</small></label>
+          <textarea id="reportDetails" name="details" rows="3" maxlength="1000" placeholder="Cuéntanos qué pasó"></textarea>
+        </div>
+        <label class="check"><input type="checkbox" name="block" checked /> <span>Bloquear también a este usuario</span></label>
+        <div class="form-nav">
+          <button type="button" class="btn btn-ghost" data-close>Cancelar</button>
+          <button type="submit" class="btn btn-danger">Enviar reporte</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal" id="blockedModal" aria-hidden="true">
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-dialog confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="blockedTitle">
+      <button class="icon-btn modal-close" data-close aria-label="Cerrar"><svg class="ic"><use href="#i-x"/></svg></button>
+      <h3 id="blockedTitle">Usuarios bloqueados</h3>
+      <p class="hint">No pueden escribirte ni iniciar conversaciones contigo.</p>
+      <div id="blockedList" class="blocked-list"></div>
     </div>
   </div>
 
