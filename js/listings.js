@@ -15,7 +15,7 @@ export const Listings = (() => {
   ];
   const catById = (id) => CATEGORIES.find((c) => c.id === id) || CATEGORIES[CATEGORIES.length - 1];
 
-  const SELECT = '*, owner:profiles!listings_owner_id_fkey(*), listing_images(path, position)';
+  const SELECT = `*, owner:profiles!listings_owner_id_fkey(${Auth.PROFILE_COLS}), listing_images(path, position)`;
   const cache = new Map(); // publicaciones ya cargadas, por id
   const favSet = new Set(); // ids favoritos del usuario con sesión
 

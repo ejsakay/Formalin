@@ -147,29 +147,12 @@ export const UI = (() => {
     });
   }
 
-  /* ---- Enlaces de contacto ---- */
-  function waNumber(phone) {
-    let d = String(phone || '').replace(/\D/g, '');
-    if (d.length === 10) d = '57' + d; // número colombiano sin indicativo
-    return d;
-  }
-
-  function contactHTML(user, listing) {
-    if (!user) return '';
-    const msg = encodeURIComponent(`¡Hola ${user.name.split(' ')[0]}! Vi tu publicación "${listing.title}" en FORMALIN y me interesa 🙌`);
-    const links = [];
-    if (user.phone) {
-      links.push(`<a class="contact-btn wa" href="https://wa.me/${waNumber(user.phone)}?text=${msg}" target="_blank" rel="noopener">${icon('whatsapp')} Escribir por WhatsApp</a>`);
-      links.push(`<a class="contact-btn tel" href="tel:${esc(user.phone.replace(/\s/g, ''))}">${icon('phone')} Llamar</a>`);
+  /* ---- Contacto: solo por el chat interno ---- */
+  function contactHTML(listing) {
+    if (listing.status === 'vendido') {
+      return `<div class="contact-box"><button class="btn btn-primary btn-block btn-lg" data-chat="${listing.id}">${icon('chat')} Preguntar por FORMALIN</button><small>Esta publicación no está disponible ahora, pero puedes escribirle al vendedor.</small></div>`;
     }
-    if (user.instagram) links.push(`<a class="contact-btn ig" href="https://instagram.com/${encodeURIComponent(user.instagram)}" target="_blank" rel="noopener">${icon('instagram')} Instagram</a>`);
-    if (user.facebook) {
-      const fb = /^https?:\/\//i.test(user.facebook) ? user.facebook : `https://facebook.com/${encodeURIComponent(user.facebook)}`;
-      links.push(`<a class="contact-btn fb" href="${esc(fb)}" target="_blank" rel="noopener">${icon('facebook')} Facebook</a>`);
-    }
-    if (user.tiktok) links.push(`<a class="contact-btn tt" href="https://tiktok.com/@${encodeURIComponent(user.tiktok)}" target="_blank" rel="noopener">${icon('tiktok')} TikTok</a>`);
-    if (user.email) links.push(`<a class="contact-btn mail" href="mailto:${esc(user.email)}?subject=${encodeURIComponent('FORMALIN: ' + listing.title)}">${icon('mail')} Correo</a>`);
-    return `<div class="contact-grid">${links.join('')}</div>`;
+    return `<div class="contact-box"><button class="btn btn-primary btn-block btn-lg" data-chat="${listing.id}">${icon('chat')} Contactar por FORMALIN</button><small>Tus mensajes quedan dentro de FORMALIN. No compartas datos personales.</small></div>`;
   }
 
   /* ---- Modal de detalle ---- */
@@ -218,7 +201,7 @@ export const UI = (() => {
               <small>${esc(sellerInfo(user))}</small>
             </div>
           </div>
-          ${isMine ? `<a class="btn btn-ghost" href="#/editar/${l.id}" data-close-detail>${icon('edit')} Editar publicación</a>` : contactHTML(user, l)}
+          ${isMine ? `<a class="btn btn-ghost" href="#/editar/${l.id}" data-close-detail>${icon('edit')} Editar publicación</a>` : contactHTML(l)}
           <div class="detail-actions">
             ${isMine ? '' : `<button class="btn btn-ghost" data-fav="${l.id}">${icon(fav ? 'heart-fill' : 'heart')} ${fav ? 'Guardado' : 'Guardar'}</button>`}
             <button class="btn btn-ghost" data-share="${l.id}">${icon('share')} Compartir</button>

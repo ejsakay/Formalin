@@ -11,6 +11,10 @@ export const Auth = (() => {
 
   const normEmail = (e) => String(e || '').trim().toLowerCase();
 
+  // Columnas públicas del perfil. No se piden correo, teléfono ni redes:
+  // el contacto entre usuarios es solo por el chat interno.
+  const PROFILE_COLS = 'id, name, account_type, career, semester, business_name, business_about, avatar_url, created_at';
+
   // Fila de la tabla profiles → objeto usuario que usa la interfaz
   function mapProfile(row) {
     if (!row) return null;
@@ -23,10 +27,6 @@ export const Auth = (() => {
       semester: row.semester || '',
       businessName: row.business_name || '',
       businessAbout: row.business_about || '',
-      phone: row.phone || '',
-      instagram: row.instagram || '',
-      facebook: row.facebook || '',
-      tiktok: row.tiktok || '',
       avatar: row.avatar_url || '',
       createdAt: row.created_at ? Date.parse(row.created_at) : Date.now(),
     };
@@ -43,8 +43,9 @@ export const Auth = (() => {
 
   async function loadProfile(user) {
     if (!user) { me = null; return null; }
-    const { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
-    me = cacheProfile(data) || { ...mapProfile({ id: user.id, email: user.email }), name: user.user_metadata?.name || user.email };
+    const { data } = await supabase.from('profiles').select(PROFILE_COLS).eq('id', user.id).maybeSingle();
+    // El correo propio sale de la sesión, no de la tabla pública
+    me = cacheProfile(data ? { ...data, email: user.email } : null) || { ...mapProfile({ id: user.id, email: user.email }), name: user.user_metadata?.name || user.email };
     await uploadPendingAvatar(user);
     return me;
   }
@@ -79,10 +80,6 @@ export const Auth = (() => {
       semester: isBusiness ? '' : data.semester || '',
       business_name: isBusiness ? (data.business_name || '').trim() : '',
       business_about: isBusiness ? (data.business_about || '').trim() : '',
-      phone: (data.phone || '').trim(),
-      instagram: cleanHandle(data.instagram),
-      facebook: (data.facebook || '').trim(),
-      tiktok: cleanHandle(data.tiktok),
     };
     const { data: res, error } = await supabase.auth.signUp({
       email,
@@ -150,21 +147,13 @@ export const Auth = (() => {
       semester: isBusiness ? '' : patch.semester ?? me.semester,
       business_name: isBusiness ? (patch.business_name ?? me.businessName).trim() : '',
       business_about: isBusiness ? (patch.business_about ?? me.businessAbout).trim() : '',
-      phone: (patch.phone ?? me.phone).trim(),
-      instagram: cleanHandle(patch.instagram ?? me.instagram),
-      facebook: (patch.facebook ?? me.facebook).trim(),
-      tiktok: cleanHandle(patch.tiktok ?? me.tiktok),
     };
     if (avatarDataUrl) row.avatar_url = await uploadAvatar(me.id, avatarDataUrl);
-    const { data, error } = await supabase.from('profiles').update(row).eq('id', me.id).select().single();
+    const { data, error } = await supabase.from('profiles').update(row).eq('id', me.id).select(PROFILE_COLS).single();
     if (error) throw new Error(friendlyError(error));
-    me = cacheProfile(data);
+    me = cacheProfile({ ...data, email: me.email });
     return me;
   }
 
-  function cleanHandle(v) {
-    return String(v || '').trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?(instagram|tiktok)\.com\/@?/i, '').replace(/\/$/, '');
-  }
-
-  return { init, current, getUser, cacheProfile, register, login, logout, updateProfile };
+  return { init, current, getUser, cacheProfile, PROFILE_COLS, register, login, logout, updateProfile };
 })();

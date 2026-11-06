@@ -519,10 +519,6 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
 .avatar-input .avatar .ic { width: 36px; height: 36px; }
 .avatar-edit { position: absolute; right: 0; bottom: 0; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--grad); color: #fff; border: 3px solid var(--surface); }
 .avatar-edit .ic { width: 14px; height: 14px; }
-.socials-details { margin-bottom: 12px; border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; }
-.socials-details summary { cursor: pointer; font-weight: 600; font-size: .9rem; }
-.socials-details[open] summary { margin-bottom: 12px; }
-.socials-details .field { margin-bottom: 10px; }
 
 .detail-dialog { max-width: 1000px; }
 .detail { display: grid; grid-template-columns: 1.1fr .9fr; }
@@ -547,17 +543,10 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
 .meta-line span { display: inline-flex; align-items: center; gap: 5px; }
 .meta-line .ic { width: 16px; height: 16px; }
 .seller-card { display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: 16px; background: var(--surface-2); }
+.contact-box { display: grid; gap: 8px; }
+.contact-box small { color: var(--muted); font-size: .8rem; text-align: center; }
 .seller-card strong { display: block; }
 .seller-card small { color: var(--muted); }
-.contact-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.contact-btn { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; border-radius: 12px; font-weight: 600; font-size: .9rem; color: #fff; transition: transform .2s var(--ease), filter .2s; }
-.contact-btn:hover { transform: translateY(-2px); filter: brightness(1.08); }
-.contact-btn.wa { background: #25D366; grid-column: 1 / -1; padding: 14px; font-size: 1rem; }
-.contact-btn.tel { background: var(--blue-600); }
-.contact-btn.ig { background: linear-gradient(45deg, #F58529, #DD2A7B, #8134AF); }
-.contact-btn.fb { background: #1877F2; }
-.contact-btn.tt { background: #111; }
-.contact-btn.mail { background: var(--blue-600); }
 .detail-actions { display: flex; gap: 10px; }
 .detail-actions .btn { flex: 1; }
 

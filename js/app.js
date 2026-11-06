@@ -247,11 +247,6 @@ import { isConfigured } from './supabase.js';
       $('#registerError').textContent = 'La contraseña debe tener al menos 6 caracteres.';
       return;
     }
-    if (String(f.phone.value).replace(/\D/g, '').length < 7) {
-      f.phone.classList.add('invalid');
-      $('#registerError').textContent = 'Escribe un número de teléfono válido.';
-      return;
-    }
     const data = Object.fromEntries(new FormData(f));
     const btn = f.querySelector('[type="submit"]');
     btn.disabled = true;
@@ -770,7 +765,6 @@ import { isConfigured } from './supabase.js';
           ${me.accountType === 'negocio'
             ? `${me.businessName ? `<span>🏪 ${esc(me.businessName)}</span>` : ''}${me.businessAbout ? `<span>${esc(me.businessAbout)}</span>` : ''}`
             : `${me.career ? `<span>🎓 ${esc(me.career)}</span>` : ''}${me.semester ? `<span>📅 ${esc(me.semester)}° semestre</span>` : ''}`}
-          ${me.phone ? `<span>📱 ${esc(me.phone)}</span>` : ''}
         </div>
       </div>
       <div class="profile-stats">
@@ -832,12 +826,7 @@ import { isConfigured } from './supabase.js';
         <div class="field"><label for="pfBusiness">Nombre del negocio</label><input id="pfBusiness" name="business_name" value="${esc(me.businessName)}" required /></div>
         <div class="field"><label for="pfAbout">¿Qué ofreces? <small>(opcional)</small></label><input id="pfAbout" name="business_about" maxlength="120" value="${esc(me.businessAbout)}" placeholder="Ej: Papelería, fotocopias y útiles" /></div>
       </div>
-      <div class="field"><label for="pfPhone">WhatsApp / Teléfono</label><input id="pfPhone" name="phone" type="tel" value="${esc(me.phone)}" required /></div>
-      <div class="row-2">
-        <div class="field icon-field">${icon('instagram')}<input name="instagram" placeholder="Instagram" value="${esc(me.instagram)}" /></div>
-        <div class="field icon-field">${icon('tiktok')}<input name="tiktok" placeholder="TikTok" value="${esc(me.tiktok)}" /></div>
-      </div>
-      <div class="field icon-field">${icon('facebook')}<input name="facebook" placeholder="Usuario o enlace de Facebook" value="${esc(me.facebook)}" /></div>
+      <p class="hint">Por tu seguridad, en FORMALIN no se muestran teléfonos ni redes sociales: los interesados te escriben por el chat.</p>
       <div class="form-nav"><span></span><button class="btn btn-primary" type="submit">${icon('check')} Guardar perfil</button></div>`;
     setAccountType(f, me.accountType);
 
